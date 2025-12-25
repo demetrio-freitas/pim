@@ -250,26 +250,47 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 lg:space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-dark-900 dark:text-white">Configurações</h1>
-          <p className="text-dark-500 dark:text-dark-400 mt-1">
-            Gerencie as configurações do sistema e sua conta
+          <h1 className="text-xl lg:text-2xl font-bold text-dark-900 dark:text-white">Configurações</h1>
+          <p className="text-sm text-dark-500 dark:text-dark-400 mt-1 hidden sm:block">
+            Gerencie as configurações do sistema
           </p>
         </div>
         {saved && (
-          <div className="flex items-center gap-2 text-green-600 bg-green-50 dark:bg-green-900/20 px-4 py-2 rounded-lg">
+          <div className="flex items-center gap-2 text-green-600 bg-green-50 dark:bg-green-900/20 px-3 py-1.5 lg:px-4 lg:py-2 rounded-lg">
             <Check className="w-4 h-4" />
-            <span className="text-sm font-medium">Salvo com sucesso!</span>
+            <span className="text-xs lg:text-sm font-medium">Salvo!</span>
           </div>
         )}
       </div>
 
+      {/* Mobile Tabs - Horizontal scroll */}
+      <div className="lg:hidden overflow-x-auto -mx-4 px-4">
+        <div className="flex gap-2 pb-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={cn(
+                'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors',
+                activeTab === tab.id
+                  ? 'bg-primary-500 text-white'
+                  : 'bg-dark-100 dark:bg-dark-800 text-dark-600 dark:text-dark-400'
+              )}
+            >
+              <tab.icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex gap-6">
-        {/* Sidebar Tabs */}
-        <div className="w-64 flex-shrink-0">
+        {/* Desktop Sidebar Tabs */}
+        <div className="hidden lg:block w-64 flex-shrink-0">
           <div className="card p-2">
             {tabs.map((tab) => (
               <button
@@ -290,41 +311,41 @@ export default function SettingsPage() {
         </div>
 
         {/* Content */}
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           {/* Modules Tab */}
           {activeTab === 'modules' && (
-            <div className="space-y-6">
-              <div className="card p-6">
+            <div className="space-y-4 lg:space-y-6">
+              <div className="card p-4 lg:p-6">
                 <div className="pb-4 border-b border-dark-100 dark:border-dark-800">
-                  <h2 className="text-lg font-semibold text-dark-900 dark:text-white flex items-center gap-2">
+                  <h2 className="text-base lg:text-lg font-semibold text-dark-900 dark:text-white flex items-center gap-2">
                     <Settings className="w-5 h-5" />
-                    Módulos de Configuração
+                    Módulos
                   </h2>
-                  <p className="text-sm text-dark-500 dark:text-dark-400 mt-1">
-                    Acesse as configurações específicas de cada módulo do sistema
+                  <p className="text-xs lg:text-sm text-dark-500 dark:text-dark-400 mt-1">
+                    Configurações específicas de cada módulo
                   </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 lg:gap-4">
                 {configModules.map((module) => (
                   <Link
                     key={module.id}
                     href={module.href}
-                    className="card p-4 hover:shadow-lg transition-all duration-200 group hover:border-primary-300 dark:hover:border-primary-700"
+                    className="card p-3 lg:p-4 hover:shadow-lg transition-all duration-200 group hover:border-primary-300 dark:hover:border-primary-700"
                   >
-                    <div className="flex items-start gap-4">
-                      <div className={cn('p-3 rounded-xl text-white', module.color)}>
-                        <module.icon className="w-6 h-6" />
+                    <div className="flex items-start gap-3">
+                      <div className={cn('p-2 lg:p-3 rounded-lg lg:rounded-xl text-white flex-shrink-0', module.color)}>
+                        <module.icon className="w-5 h-5 lg:w-6 lg:h-6" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <h3 className="font-semibold text-dark-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                          <h3 className="font-semibold text-sm lg:text-base text-dark-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                             {module.name}
                           </h3>
-                          <ChevronRight className="w-5 h-5 text-dark-400 group-hover:text-primary-500 group-hover:translate-x-1 transition-all" />
+                          <ChevronRight className="w-4 h-4 lg:w-5 lg:h-5 text-dark-400 group-hover:text-primary-500 transition-all flex-shrink-0" />
                         </div>
-                        <p className="text-sm text-dark-500 dark:text-dark-400 mt-1">
+                        <p className="text-xs lg:text-sm text-dark-500 dark:text-dark-400 mt-0.5 lg:mt-1 line-clamp-2">
                           {module.description}
                         </p>
                       </div>
@@ -337,68 +358,42 @@ export default function SettingsPage() {
 
           {/* Profile Tab */}
           {activeTab === 'profile' && (
-            <form onSubmit={handleProfileSubmit} className="card p-6 space-y-6">
-              <div className="flex items-center gap-4 pb-6 border-b border-dark-100 dark:border-dark-800">
-                <div className="w-20 h-20 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center">
-                  <User className="w-10 h-10 text-primary-600" />
+            <form onSubmit={handleProfileSubmit} className="card p-4 lg:p-6 space-y-4 lg:space-y-6">
+              <div className="flex flex-col sm:flex-row items-center gap-4 pb-4 lg:pb-6 border-b border-dark-100 dark:border-dark-800">
+                <div className="w-16 h-16 lg:w-20 lg:h-20 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                  <User className="w-8 h-8 lg:w-10 lg:h-10 text-primary-600" />
                 </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-dark-900 dark:text-white">
+                <div className="text-center sm:text-left">
+                  <h2 className="text-base lg:text-lg font-semibold text-dark-900 dark:text-white">
                     {user?.fullName || 'Usuário'}
                   </h2>
-                  <p className="text-dark-500 dark:text-dark-400">{user?.email}</p>
+                  <p className="text-sm text-dark-500 dark:text-dark-400">{user?.email}</p>
                   <span className="inline-block mt-1 px-2 py-0.5 bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400 text-xs rounded">
                     {user?.roles?.[0] || 'ADMIN'}
                   </span>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-1">
-                    Nome
-                  </label>
-                  <input
-                    type="text"
-                    value={profileForm.firstName}
-                    onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
-                    className="input"
-                  />
+                  <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-1">Nome</label>
+                  <input type="text" value={profileForm.firstName} onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })} className="input" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-1">
-                    Sobrenome
-                  </label>
-                  <input
-                    type="text"
-                    value={profileForm.lastName}
-                    onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
-                    className="input"
-                  />
+                  <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-1">Sobrenome</label>
+                  <input type="text" value={profileForm.lastName} onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })} className="input" />
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-1">
-                    E-mail
-                  </label>
-                  <input
-                    type="email"
-                    value={profileForm.email}
-                    onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                    className="input"
-                    disabled
-                  />
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-1">E-mail</label>
+                  <input type="email" value={profileForm.email} onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} className="input" disabled />
                   <p className="text-xs text-dark-400 mt-1">O e-mail não pode ser alterado</p>
                 </div>
               </div>
 
               <div className="flex justify-end">
-                <button type="submit" disabled={profileMutation.isPending} className="btn-primary">
-                  {profileMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Save className="w-4 h-4 mr-2" />
-                  )}
-                  Salvar Perfil
+                <button type="submit" disabled={profileMutation.isPending} className="btn-primary w-full sm:w-auto">
+                  {profileMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                  Salvar
                 </button>
               </div>
             </form>
@@ -406,14 +401,14 @@ export default function SettingsPage() {
 
           {/* Security Tab */}
           {activeTab === 'security' && (
-            <form onSubmit={handlePasswordSubmit} className="card p-6 space-y-6">
+            <form onSubmit={handlePasswordSubmit} className="card p-4 lg:p-6 space-y-4 lg:space-y-6">
               <div className="pb-4 border-b border-dark-100 dark:border-dark-800">
-                <h2 className="text-lg font-semibold text-dark-900 dark:text-white flex items-center gap-2">
+                <h2 className="text-base lg:text-lg font-semibold text-dark-900 dark:text-white flex items-center gap-2">
                   <Shield className="w-5 h-5" />
                   Alterar Senha
                 </h2>
-                <p className="text-sm text-dark-500 dark:text-dark-400 mt-1">
-                  Mantenha sua conta segura com uma senha forte
+                <p className="text-xs lg:text-sm text-dark-500 dark:text-dark-400 mt-1">
+                  Mantenha sua conta segura
                 </p>
               </div>
 
@@ -460,12 +455,8 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex justify-end">
-                <button type="submit" disabled={passwordMutation.isPending} className="btn-primary">
-                  {passwordMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Lock className="w-4 h-4 mr-2" />
-                  )}
+                <button type="submit" disabled={passwordMutation.isPending} className="btn-primary w-full sm:w-auto">
+                  {passwordMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Lock className="w-4 h-4 mr-2" />}
                   Alterar Senha
                 </button>
               </div>
@@ -474,18 +465,18 @@ export default function SettingsPage() {
 
           {/* Localization Tab */}
           {activeTab === 'localization' && (
-            <form onSubmit={handleLocalizationSubmit} className="card p-6 space-y-6">
+            <form onSubmit={handleLocalizationSubmit} className="card p-4 lg:p-6 space-y-4 lg:space-y-6">
               <div className="pb-4 border-b border-dark-100 dark:border-dark-800">
-                <h2 className="text-lg font-semibold text-dark-900 dark:text-white flex items-center gap-2">
+                <h2 className="text-base lg:text-lg font-semibold text-dark-900 dark:text-white flex items-center gap-2">
                   <Globe className="w-5 h-5" />
                   Localização
                 </h2>
-                <p className="text-sm text-dark-500 dark:text-dark-400 mt-1">
-                  Configure idioma, fuso horário e moeda
+                <p className="text-xs lg:text-sm text-dark-500 dark:text-dark-400 mt-1">
+                  Idioma, fuso e moeda
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-1">
                     Idioma
@@ -551,9 +542,9 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex justify-end">
-                <button type="submit" className="btn-primary">
+                <button type="submit" className="btn-primary w-full sm:w-auto">
                   <Save className="w-4 h-4 mr-2" />
-                  Salvar Localização
+                  Salvar
                 </button>
               </div>
             </form>
@@ -561,14 +552,14 @@ export default function SettingsPage() {
 
           {/* Notifications Tab */}
           {activeTab === 'notifications' && (
-            <form onSubmit={handleNotificationsSubmit} className="card p-6 space-y-6">
+            <form onSubmit={handleNotificationsSubmit} className="card p-4 lg:p-6 space-y-4 lg:space-y-6">
               <div className="pb-4 border-b border-dark-100 dark:border-dark-800">
-                <h2 className="text-lg font-semibold text-dark-900 dark:text-white flex items-center gap-2">
+                <h2 className="text-base lg:text-lg font-semibold text-dark-900 dark:text-white flex items-center gap-2">
                   <Bell className="w-5 h-5" />
                   Notificações
                 </h2>
-                <p className="text-sm text-dark-500 dark:text-dark-400 mt-1">
-                  Gerencie suas preferências de notificação
+                <p className="text-xs lg:text-sm text-dark-500 dark:text-dark-400 mt-1">
+                  Preferências de notificação
                 </p>
               </div>
 
@@ -598,9 +589,9 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex justify-end">
-                <button type="submit" className="btn-primary">
+                <button type="submit" className="btn-primary w-full sm:w-auto">
                   <Save className="w-4 h-4 mr-2" />
-                  Salvar Notificações
+                  Salvar
                 </button>
               </div>
             </form>
@@ -608,19 +599,19 @@ export default function SettingsPage() {
 
           {/* System Tab */}
           {activeTab === 'system' && (
-            <form onSubmit={handleSystemSubmit} className="card p-6 space-y-6">
+            <form onSubmit={handleSystemSubmit} className="card p-4 lg:p-6 space-y-4 lg:space-y-6">
               <div className="pb-4 border-b border-dark-100 dark:border-dark-800">
-                <h2 className="text-lg font-semibold text-dark-900 dark:text-white flex items-center gap-2">
+                <h2 className="text-base lg:text-lg font-semibold text-dark-900 dark:text-white flex items-center gap-2">
                   <Building className="w-5 h-5" />
-                  Configurações do Sistema
+                  Sistema
                 </h2>
-                <p className="text-sm text-dark-500 dark:text-dark-400 mt-1">
+                <p className="text-xs lg:text-sm text-dark-500 dark:text-dark-400 mt-1">
                   Configurações gerais do PIM
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
                   <label className="block text-sm font-medium text-dark-700 dark:text-dark-300 mb-1">
                     Nome da Empresa
                   </label>
@@ -688,9 +679,9 @@ export default function SettingsPage() {
               </div>
 
               <div className="flex justify-end">
-                <button type="submit" className="btn-primary">
+                <button type="submit" className="btn-primary w-full sm:w-auto">
                   <Save className="w-4 h-4 mr-2" />
-                  Salvar Configurações
+                  Salvar
                 </button>
               </div>
             </form>

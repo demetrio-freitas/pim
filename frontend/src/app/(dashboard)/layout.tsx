@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore, useUIStore } from '@/lib/store';
 import { api } from '@/lib/api';
-import { Sidebar } from '@/components/Sidebar';
+import { Sidebar, MobileHeader } from '@/components/Sidebar';
 import { cn } from '@/lib/utils';
 
 export default function DashboardLayout({
@@ -69,14 +69,22 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dark-950">
+      {/* Mobile Header - visível apenas em telas pequenas */}
+      <MobileHeader />
+
+      {/* Sidebar - desktop tem margin, mobile é overlay */}
       <Sidebar />
+
       <main
         className={cn(
           'transition-all duration-300',
-          sidebarOpen ? 'ml-64' : 'ml-20'
+          // Mobile: sem margin, padding-top para o header
+          'pt-16 lg:pt-0',
+          // Desktop: margin left baseada no sidebar
+          sidebarOpen ? 'lg:ml-64' : 'lg:ml-20'
         )}
       >
-        <div className="p-6">{children}</div>
+        <div className="p-4 lg:p-6">{children}</div>
       </main>
     </div>
   );
