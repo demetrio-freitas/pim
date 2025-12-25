@@ -30,6 +30,17 @@ export function getLocalizedErrorMessage(errorCode: ErrorCode): string {
   return errorMessages[errorCode] || 'Ocorreu um erro inesperado';
 }
 
+/**
+ * API Client for PIM backend communication.
+ *
+ * SECURITY NOTE: Currently tokens are stored in localStorage for simplicity.
+ * This is vulnerable to XSS attacks. For production environments, consider:
+ * 1. Using httpOnly cookies for token storage (requires backend changes)
+ * 2. Implementing token rotation on each request
+ * 3. Using short-lived access tokens with refresh tokens
+ *
+ * The backend already supports token blacklisting which mitigates some risks.
+ */
 class ApiClient {
   private client: AxiosInstance;
   private accessToken: string | null = null;
@@ -87,10 +98,18 @@ class ApiClient {
     );
   }
 
+  /**
+   * Store authentication tokens.
+   *
+   * WARNING: localStorage is accessible to JavaScript, making it vulnerable to XSS.
+   * For production, implement httpOnly cookie-based token storage.
+   * The backend /api/auth/login endpoint can be extended to set secure cookies.
+   */
   setTokens(access: string, refresh: string) {
     this.accessToken = access;
     this.refreshToken = refresh;
     if (typeof window !== 'undefined') {
+      // TODO: Migrate to httpOnly cookies for production security
       localStorage.setItem('accessToken', access);
       localStorage.setItem('refreshToken', refresh);
     }
