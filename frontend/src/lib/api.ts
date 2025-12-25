@@ -146,8 +146,33 @@ class ApiClient {
     return response.data;
   }
 
-  logout() {
-    this.clearTokens();
+  /**
+   * Logout and invalidate the current token on the server.
+   * SECURITY: Also clears local tokens to prevent reuse.
+   */
+  async logout(): Promise<void> {
+    try {
+      // Call backend to invalidate the token
+      await this.client.post('/auth/logout');
+    } catch (error) {
+      // Continue with local logout even if server call fails
+      console.warn('Server logout failed, proceeding with local logout');
+    } finally {
+      this.clearTokens();
+    }
+  }
+
+  /**
+   * Logout from all devices (invalidate all tokens for this user).
+   */
+  async logoutAll(): Promise<void> {
+    try {
+      await this.client.post('/auth/logout-all');
+    } catch (error) {
+      console.warn('Server logout-all failed, proceeding with local logout');
+    } finally {
+      this.clearTokens();
+    }
   }
 
   // Products
