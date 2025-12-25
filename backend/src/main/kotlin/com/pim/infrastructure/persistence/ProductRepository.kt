@@ -117,4 +117,43 @@ interface ProductRepository : JpaRepository<Product, UUID>, JpaSpecificationExec
 
     @Query("SELECT p FROM Product p WHERE p.parent.id = :parentId ORDER BY p.createdAt")
     fun findVariantsByParentId(@Param("parentId") parentId: UUID): List<Product>
+
+    /**
+     * Get all product statistics in a single query.
+     * Returns: [total, draft, pendingReview, approved, published, archived, lowStock, noImages, avgCompleteness]
+     */
+    @Query("""
+        SELECT
+            COUNT(p),
+            SUM(CASE WHEN p.status = 'DRAFT' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN p.status = 'PENDING_REVIEW' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN p.status = 'APPROVED' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN p.status = 'PUBLISHED' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN p.status = 'ARCHIVED' THEN 1 ELSE 0 END),
+            SUM(CASE WHEN p.stockQuantity < 10 AND p.stockQuantity >= 0 THEN 1 ELSE 0 END),
+            COALESCE(AVG(CAST(p.completenessScore AS double)), 0.0)
+        FROM Product p
+    """)
+    fun getAggregatedStatistics(): Array<Any>
+
+    /**
+     * Count products without images (separate query due to join complexity).
+     * This is still needed as a separate query.
+     */
+    @Query("SELECT COUNT(p) FROM Product p WHERE NOT EXISTS (SELECT 1 FROM ProductMedia m WHERE m.product = p)")
+    fun countProductsWithoutMedia(): Long
+
+    /**
+     * Get all status counts in a single query.
+     * Returns a list of [status, count] arrays.
+     */
+    @Query("SELECT p.status, COUNT(p) FROM Product p GROUP BY p.status")
+    fun countAllByStatus(): List<Array<Any>>
+
+    /**
+     * Batch update status for multiple products in a single query.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE Product p SET p.status = :status, p.updatedAt = CURRENT_TIMESTAMP WHERE p.id IN :ids")
+    fun bulkUpdateStatus(@Param("ids") ids: List<UUID>, @Param("status") status: ProductStatus): Int
 }

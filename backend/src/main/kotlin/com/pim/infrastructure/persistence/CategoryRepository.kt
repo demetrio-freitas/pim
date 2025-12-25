@@ -43,4 +43,23 @@ interface CategoryRepository : JpaRepository<Category, UUID> {
     fun search(@Param("query") query: String): List<Category>
 
     fun findByNameContainingIgnoreCase(name: String, pageable: Pageable): Page<Category>
+
+    /**
+     * Fetch all categories with their children in a single query.
+     * Used for building the complete category tree without N+1 queries.
+     */
+    @Query("""
+        SELECT DISTINCT c FROM Category c
+        LEFT JOIN FETCH c.children
+        WHERE c.isActive = true
+        ORDER BY c.level, c.position
+    """)
+    fun findAllWithChildren(): List<Category>
+
+    /**
+     * Batch update positions for multiple categories.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE Category c SET c.position = :position WHERE c.id = :id")
+    fun updatePosition(@Param("id") id: UUID, @Param("position") position: Int)
 }

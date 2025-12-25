@@ -33,11 +33,11 @@ data class CompletenessRuleDTO(
 )
 
 @Service
-@Transactional
 class CompletenessService(
     private val completenessRuleRepository: CompletenessRuleRepository
 ) {
 
+    @Transactional
     fun initializeDefaultRules() {
         val existingRules = completenessRuleRepository.findByCategoryIdIsNullAndIsActiveTrue()
         if (existingRules.isEmpty()) {
@@ -46,6 +46,7 @@ class CompletenessService(
         }
     }
 
+    @Transactional(readOnly = true)
     fun getRules(categoryId: UUID? = null): List<CompletenessRule> {
         return if (categoryId != null) {
             completenessRuleRepository.findRulesForCategory(categoryId)
@@ -54,10 +55,12 @@ class CompletenessService(
         }
     }
 
+    @Transactional(readOnly = true)
     fun getAllRules(): List<CompletenessRule> {
         return completenessRuleRepository.findAll()
     }
 
+    @Transactional
     fun createRule(dto: CompletenessRuleDTO): CompletenessRule {
         val rule = CompletenessRule(
             field = dto.field,
@@ -70,6 +73,7 @@ class CompletenessService(
         return completenessRuleRepository.save(rule)
     }
 
+    @Transactional
     fun updateRule(id: UUID, dto: CompletenessRuleDTO): CompletenessRule {
         val rule = completenessRuleRepository.findById(id)
             .orElseThrow { IllegalArgumentException("Rule not found") }
@@ -85,10 +89,12 @@ class CompletenessService(
         return completenessRuleRepository.save(updatedRule)
     }
 
+    @Transactional
     fun deleteRule(id: UUID) {
         completenessRuleRepository.deleteById(id)
     }
 
+    @Transactional(readOnly = true)
     fun evaluateProduct(product: Product): CompletenessEvaluation {
         val categoryId = product.categories.firstOrNull()?.id
         val rules = getRules(categoryId)
@@ -152,6 +158,7 @@ class CompletenessService(
         }
     }
 
+    @Transactional(readOnly = true)
     fun calculateScore(product: Product): Int {
         return evaluateProduct(product).score
     }

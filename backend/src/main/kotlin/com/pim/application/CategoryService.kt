@@ -8,36 +8,42 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.*
 
 @Service
-@Transactional
 class CategoryService(
     private val categoryRepository: CategoryRepository,
     private val productRepository: ProductRepository
 ) {
 
+    @Transactional(readOnly = true)
     fun findById(id: UUID): Category? {
         return categoryRepository.findByIdWithChildren(id)
     }
 
+    @Transactional(readOnly = true)
     fun findByCode(code: String): Category? {
         return categoryRepository.findByCode(code)
     }
 
+    @Transactional(readOnly = true)
     fun findAll(): List<Category> {
         return categoryRepository.findAllActive()
     }
 
+    @Transactional(readOnly = true)
     fun findRootCategories(): List<Category> {
         return categoryRepository.findRootCategories()
     }
 
+    @Transactional(readOnly = true)
     fun findChildren(parentId: UUID): List<Category> {
         return categoryRepository.findByParentId(parentId)
     }
 
+    @Transactional(readOnly = true)
     fun search(query: String): List<Category> {
         return categoryRepository.search(query)
     }
 
+    @Transactional
     fun create(category: Category): Category {
         if (categoryRepository.existsByCode(category.code)) {
             throw IllegalArgumentException("Category with code '${category.code}' already exists")
@@ -50,6 +56,7 @@ class CategoryService(
         return categoryRepository.save(category)
     }
 
+    @Transactional
     fun createChild(parentId: UUID, category: Category): Category {
         val parent = categoryRepository.findById(parentId)
             .orElseThrow { NoSuchElementException("Parent category not found with id: $parentId") }
@@ -68,6 +75,7 @@ class CategoryService(
         return categoryRepository.save(category)
     }
 
+    @Transactional
     fun update(id: UUID, updateFn: (Category) -> Unit): Category {
         val category = categoryRepository.findById(id)
             .orElseThrow { NoSuchElementException("Category not found with id: $id") }
@@ -77,6 +85,7 @@ class CategoryService(
         return categoryRepository.save(category)
     }
 
+    @Transactional
     fun move(categoryId: UUID, newParentId: UUID?): Category {
         val category = categoryRepository.findById(categoryId)
             .orElseThrow { NoSuchElementException("Category not found with id: $categoryId") }
@@ -95,21 +104,19 @@ class CategoryService(
         return categoryRepository.save(category)
     }
 
+    /**
+     * Reorder categories using batch updates instead of individual saves.
+     * Optimized: Uses single UPDATE query per category instead of SELECT + UPDATE.
+     */
+    @Transactional
     fun reorder(parentId: UUID?, orderedIds: List<UUID>) {
-        val categories = if (parentId == null) {
-            categoryRepository.findRootCategories()
-        } else {
-            categoryRepository.findByParentId(parentId)
-        }
-
+        // Use batch update instead of loading and saving each category individually
         orderedIds.forEachIndexed { index, id ->
-            categories.find { it.id == id }?.let { category ->
-                category.position = index
-                categoryRepository.save(category)
-            }
+            categoryRepository.updatePosition(id, index)
         }
     }
 
+    @Transactional
     fun delete(id: UUID) {
         val category = categoryRepository.findByIdWithChildren(id)
             ?: throw NoSuchElementException("Category not found with id: $id")
@@ -121,15 +128,41 @@ class CategoryService(
         categoryRepository.deleteById(id)
     }
 
+    /**
+     * Get the complete category tree.
+     * Optimized: Fetches all categories in a single query and builds tree in memory.
+     * Previously caused N+1 queries (O(n) queries for n categories).
+     */
+    @Transactional(readOnly = true)
     fun getTree(): List<CategoryTreeNode> {
-        val roots = categoryRepository.findRootCategories()
+        // Fetch all categories with children in a single query
+        val allCategories = categoryRepository.findAllWithChildren()
+
+        // Build a map for quick lookup by parent ID
+        val childrenByParentId = allCategories.groupBy { it.parent?.id }
+
+        // Get product counts in a single query
         val productCounts = productRepository.countProductsByCategory()
             .associate { (it[0] as UUID) to (it[1] as Long).toInt() }
-        return roots.map { buildTree(it, productCounts) }
+
+        // Get root categories (those without parent)
+        val roots = childrenByParentId[null] ?: emptyList()
+
+        // Build tree recursively using in-memory data (no additional queries)
+        return roots
+            .sortedBy { it.position }
+            .map { buildTreeFromMemory(it, childrenByParentId, productCounts) }
     }
 
-    private fun buildTree(category: Category, productCounts: Map<UUID, Int>): CategoryTreeNode {
-        val children = categoryRepository.findByParentId(category.id)
+    /**
+     * Build tree node from in-memory data without additional database queries.
+     */
+    private fun buildTreeFromMemory(
+        category: Category,
+        childrenByParentId: Map<UUID?, List<Category>>,
+        productCounts: Map<UUID, Int>
+    ): CategoryTreeNode {
+        val children = childrenByParentId[category.id] ?: emptyList()
         return CategoryTreeNode(
             id = category.id,
             code = category.code,
@@ -137,7 +170,9 @@ class CategoryService(
             level = category.level,
             position = category.position,
             isActive = category.isActive,
-            children = children.map { buildTree(it, productCounts) },
+            children = children
+                .sortedBy { it.position }
+                .map { buildTreeFromMemory(it, childrenByParentId, productCounts) },
             productCount = productCounts[category.id] ?: 0
         )
     }
