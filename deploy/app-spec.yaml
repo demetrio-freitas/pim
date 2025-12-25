@@ -1,0 +1,160 @@
+# DigitalOcean App Platform Specification
+# Deploy: doctl apps create --spec deploy/app-spec.yaml
+
+name: pim-system
+region: nyc
+
+features:
+  - buildpack-stack=ubuntu-22
+
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
+
+services:
+  # ============================================
+  # BACKEND - Spring Boot 3.4 (Kotlin)
+  # ============================================
+  - name: backend
+    git:
+      repo_clone_url: https://github.com/SEU-USUARIO/pim.git
+      branch: main
+    dockerfile_path: backend/Dockerfile
+    source_dir: /
+    http_port: 8080
+    instance_count: 2
+    instance_size_slug: professional-xs  # 1 vCPU, 1GB RAM
+
+    health_check:
+      http_path: /actuator/health
+      initial_delay_seconds: 90
+      period_seconds: 15
+      timeout_seconds: 10
+      success_threshold: 1
+      failure_threshold: 3
+
+    routes:
+      - path: /api
+      - path: /actuator
+      - path: /swagger-ui
+      - path: /api-docs
+
+    cors:
+      allow_origins:
+        - prefix: https://app.
+        - prefix: https://www.
+      allow_methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+        - OPTIONS
+      allow_headers:
+        - Content-Type
+        - Authorization
+        - X-API-Key
+      max_age: "3600"
+
+    envs:
+      # Spring Profile
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+
+      # Database (from managed database)
+      - key: SPRING_DATASOURCE_URL
+        value: ${db-postgres.DATABASE_URL}
+      - key: SPRING_DATASOURCE_USERNAME
+        value: ${db-postgres.USERNAME}
+      - key: SPRING_DATASOURCE_PASSWORD
+        value: ${db-postgres.PASSWORD}
+
+      # Redis (from managed database)
+      - key: SPRING_DATA_REDIS_HOST
+        value: ${db-redis.HOSTNAME}
+      - key: SPRING_DATA_REDIS_PORT
+        value: ${db-redis.PORT}
+      - key: SPRING_DATA_REDIS_PASSWORD
+        value: ${db-redis.PASSWORD}
+      - key: SPRING_DATA_REDIS_SSL_ENABLED
+        value: "true"
+
+      # JWT Secret (set as secret in DO console)
+      - key: JWT_SECRET
+        type: SECRET
+        value: ENC[sua-chave-jwt-aqui]
+
+      # S3/Spaces Storage
+      - key: MINIO_ENDPOINT
+        value: "https://nyc3.digitaloceanspaces.com"
+      - key: MINIO_BUCKET
+        value: "pim-assets"
+      - key: MINIO_ACCESS_KEY
+        type: SECRET
+        value: ENC[sua-access-key]
+      - key: MINIO_SECRET_KEY
+        type: SECRET
+        value: ENC[sua-secret-key]
+
+      # Logging
+      - key: LOGGING_LEVEL_ROOT
+        value: WARN
+      - key: LOGGING_LEVEL_COM_PIM
+        value: INFO
+
+      # JVM Options
+      - key: JAVA_OPTS
+        value: "-Xmx768m -Xms512m -XX:+UseG1GC"
+
+  # ============================================
+  # FRONTEND - Next.js 14
+  # ============================================
+  - name: frontend
+    git:
+      repo_clone_url: https://github.com/SEU-USUARIO/pim.git
+      branch: main
+    dockerfile_path: frontend/Dockerfile
+    source_dir: /
+    http_port: 3000
+    instance_count: 2
+    instance_size_slug: basic-xs  # 0.5 vCPU, 512MB RAM
+
+    routes:
+      - path: /
+
+    envs:
+      - key: NEXT_PUBLIC_API_URL
+        value: ${backend.PUBLIC_URL}
+      - key: NODE_ENV
+        value: production
+
+# ============================================
+# MANAGED DATABASES
+# ============================================
+databases:
+  # PostgreSQL 16
+  - name: db-postgres
+    engine: PG
+    version: "16"
+    size: db-s-1vcpu-1gb
+    num_nodes: 1
+    production: true
+
+  # Redis 7
+  - name: db-redis
+    engine: REDIS
+    version: "7"
+    size: db-s-1vcpu-1gb
+    num_nodes: 1
+    production: true
+
+# ============================================
+# DOMAINS (configure after first deploy)
+# ============================================
+# domains:
+#   - domain: app.seudominio.com.br
+#     type: PRIMARY
+#     zone: seudominio.com.br
+#   - domain: api.seudominio.com.br
+#     type: PRIMARY
+#     zone: seudominio.com.br
