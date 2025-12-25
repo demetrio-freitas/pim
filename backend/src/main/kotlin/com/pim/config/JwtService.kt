@@ -30,14 +30,31 @@ class JwtService(
     }
 
     private fun validateSecretKey() {
+        // SECURITY: Fail fast if JWT secret is not configured
+        if (secretKey.isBlank()) {
+            logger.error("JWT secret key is empty or not configured!")
+            throw IllegalStateException(
+                "JWT secret key must be configured. Set the JWT_SECRET environment variable with a " +
+                "Base64 encoded string of at least 256 bits. Generate with: openssl rand -base64 64"
+            )
+        }
+
         try {
             val keyBytes = Decoders.BASE64.decode(secretKey)
             if (keyBytes.size < 32) { // 256 bits minimum
-                logger.warn("JWT secret key is less than 256 bits. This is insecure for production!")
+                logger.error("JWT secret key is less than 256 bits ({} bytes). This is insecure!", keyBytes.size)
+                throw IllegalStateException(
+                    "JWT secret key must be at least 256 bits (32 bytes). " +
+                    "Current key is only ${keyBytes.size * 8} bits. Generate a secure key with: openssl rand -base64 64"
+                )
             }
-        } catch (e: Exception) {
+            logger.info("JWT secret key validated: {} bits", keyBytes.size * 8)
+        } catch (e: IllegalArgumentException) {
             logger.error("Invalid JWT secret key format: ${e.message}")
-            throw IllegalStateException("JWT secret key must be a valid Base64 encoded string of at least 256 bits")
+            throw IllegalStateException(
+                "JWT secret key must be a valid Base64 encoded string. " +
+                "Generate with: openssl rand -base64 64"
+            )
         }
     }
 

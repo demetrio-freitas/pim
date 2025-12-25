@@ -8,6 +8,22 @@ spring:
     # SECURITY: Password must be provided via environment variable in production
     password: ${SPRING_DATASOURCE_PASSWORD:}
     driver-class-name: org.postgresql.Driver
+    # HikariCP Connection Pool Configuration
+    hikari:
+      # Maximum number of connections in the pool
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      # Minimum number of idle connections maintained
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      # Maximum time to wait for a connection from the pool (30 seconds)
+      connection-timeout: ${DB_CONNECTION_TIMEOUT:30000}
+      # Maximum idle time for connections (10 minutes)
+      idle-timeout: ${DB_IDLE_TIMEOUT:600000}
+      # Maximum lifetime of a connection in the pool (30 minutes)
+      max-lifetime: ${DB_MAX_LIFETIME:1800000}
+      # Connection validation timeout (5 seconds)
+      validation-timeout: ${DB_VALIDATION_TIMEOUT:5000}
+      # Leak detection threshold (0 = disabled, recommended for dev only)
+      leak-detection-threshold: ${DB_LEAK_DETECTION_THRESHOLD:0}
 
   jpa:
     hibernate:
@@ -32,13 +48,19 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
-      timeout: 2000ms
+      # Connection timeout (increased for network latency)
+      timeout: ${REDIS_TIMEOUT:5000ms}
+      # Command execution timeout
       lettuce:
         pool:
-          max-active: 8
-          max-idle: 8
-          min-idle: 0
-          max-wait: -1ms
+          # Maximum active connections
+          max-active: ${REDIS_POOL_MAX_ACTIVE:16}
+          # Maximum idle connections
+          max-idle: ${REDIS_POOL_MAX_IDLE:8}
+          # Minimum idle connections (pre-warmed for faster startup)
+          min-idle: ${REDIS_POOL_MIN_IDLE:2}
+          # Maximum wait time for connection (10 seconds, prevent thread starvation)
+          max-wait: ${REDIS_POOL_MAX_WAIT:10000ms}
 
   # Elasticsearch Configuration
   elasticsearch:
@@ -51,10 +73,15 @@ elasticsearch:
   port: ${ELASTICSEARCH_PORT:9200}
   username: ${ELASTICSEARCH_USERNAME:}
   password: ${ELASTICSEARCH_PASSWORD:}
+  # Connection timeouts (milliseconds)
+  connect-timeout: ${ELASTICSEARCH_CONNECT_TIMEOUT:5000}
+  socket-timeout: ${ELASTICSEARCH_SOCKET_TIMEOUT:10000}
 
 # Kafka Configuration
 kafka:
   enabled: ${KAFKA_ENABLED:false}
+  # Listener concurrency (number of parallel consumers)
+  listener-concurrency: ${KAFKA_LISTENER_CONCURRENCY:3}
 
 spring.kafka:
   bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -127,26 +154,43 @@ springdoc:
 management:
   endpoints:
     web:
+      # Base path for actuator endpoints
+      base-path: /actuator
       exposure:
-        include: health,info,metrics,prometheus,caches
+        # Only expose health and info by default
+        # Prometheus/metrics endpoints should be behind firewall or auth
+        include: ${ACTUATOR_ENDPOINTS:health,info}
   endpoint:
     health:
+      # Only show details to authenticated users
       show-details: when_authorized
+      # Show components status
+      show-components: when_authorized
     caches:
+      enabled: true
+    # Prometheus endpoint disabled by default for security
+    prometheus:
+      enabled: ${ACTUATOR_PROMETHEUS_ENABLED:false}
+  # Health probes for Kubernetes
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
       enabled: true
   metrics:
     tags:
       application: ${spring.application.name}
     export:
       prometheus:
-        enabled: true
+        enabled: ${ACTUATOR_PROMETHEUS_ENABLED:false}
 
 # Logging
 logging:
   level:
     root: INFO
-    com.pim: DEBUG
-    org.springframework.security: DEBUG
+    com.pim: ${LOG_LEVEL_APP:DEBUG}
+    # SECURITY: Don't log security details in default profile
+    org.springframework.security: ${LOG_LEVEL_SECURITY:INFO}
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
@@ -180,10 +224,26 @@ spring:
 kafka:
   enabled: true
 
+# Production: Enable Prometheus for monitoring
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
 logging:
   level:
     root: WARN
     com.pim: INFO
+    # Disable security debug in production
+    org.springframework.security: WARN
     org.springframework.cache: INFO
     org.springframework.kafka: INFO
 
