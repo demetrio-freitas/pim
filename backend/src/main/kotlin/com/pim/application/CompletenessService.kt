@@ -94,7 +94,9 @@ class CompletenessService(
         val rules = getRules(categoryId)
 
         if (rules.isEmpty()) {
-            return CompletenessEvaluation(score = 100, rules = emptyList())
+            // Return 0% when no rules are defined - indicating completeness cannot be evaluated
+            // This is more accurate than returning 100% which would be misleading
+            return CompletenessEvaluation(score = 0, rules = emptyList())
         }
 
         val evaluations = rules.map { rule ->
@@ -122,15 +124,17 @@ class CompletenessService(
 
     private fun isFieldFilled(product: Product, field: String): Boolean {
         return when (field) {
-            "name" -> !product.name.isNullOrBlank()
+            "name" -> product.name.isNotBlank()
             "description" -> !product.description.isNullOrBlank()
             "shortDescription" -> !product.shortDescription.isNullOrBlank()
-            "price" -> product.price != null && product.price!! > java.math.BigDecimal.ZERO
+            // Fixed: Use safe null check instead of !! operator to prevent NPE
+            "price" -> product.price?.let { it > java.math.BigDecimal.ZERO } ?: false
             "images" -> product.media.isNotEmpty()
             "category" -> product.categories.isNotEmpty()
             "brand" -> !product.brand.isNullOrBlank()
             "manufacturer" -> !product.manufacturer.isNullOrBlank()
-            "weight" -> product.weight != null && product.weight!! > java.math.BigDecimal.ZERO
+            // Fixed: weight is non-nullable (has default), check if greater than zero
+            "weight" -> product.weight > java.math.BigDecimal.ZERO
             "metaTitle" -> !product.metaTitle.isNullOrBlank()
             "metaDescription" -> !product.metaDescription.isNullOrBlank()
             "metaKeywords" -> !product.metaKeywords.isNullOrBlank()

@@ -100,6 +100,15 @@ interface ProductRepository : JpaRepository<Product, UUID>, JpaSpecificationExec
     @Query("SELECT COUNT(p) FROM Product p JOIN p.categories c WHERE c.id = :categoryId")
     fun countByCategory(@Param("categoryId") categoryId: UUID): Long
 
+    @Query("SELECT COUNT(DISTINCT p) FROM Product p JOIN p.categories c WHERE c.id = :categoryId")
+    fun countByCategoriesId(@Param("categoryId") categoryId: UUID): Long
+
+    @Query("SELECT COUNT(DISTINCT p) FROM Product p JOIN p.categories c WHERE p.status = :status AND c.id = :categoryId")
+    fun countByStatusAndCategoriesId(
+        @Param("status") status: ProductStatus,
+        @Param("categoryId") categoryId: UUID
+    ): Long
+
     @Query("SELECT c.id, COUNT(p) FROM Product p JOIN p.categories c GROUP BY c.id")
     fun countProductsByCategory(): List<Array<Any>>
 

@@ -19,6 +19,8 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.domain.Specification
+import org.slf4j.LoggerFactory
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
@@ -97,14 +99,35 @@ class ProductService(
         CacheEvict(cacheNames = [CacheConfig.DASHBOARD_STATS_CACHE], allEntries = true)
     ])
     fun create(product: Product): Product {
-        if (productRepository.existsBySku(product.sku)) {
-            throw ProductAlreadyExistsException(product.sku)
+        // Validate price is not negative
+        product.price?.let { price ->
+            if (price < BigDecimal.ZERO) {
+                throw IllegalArgumentException("Product price cannot be negative: $price")
+            }
+        }
+        product.costPrice?.let { costPrice ->
+            if (costPrice < BigDecimal.ZERO) {
+                throw IllegalArgumentException("Product cost price cannot be negative: $costPrice")
+            }
         }
 
         product.completenessScore = product.calculateCompleteness()
-        val saved = productRepository.save(product)
-        logger.info("Product created: ${saved.id} (SKU: ${saved.sku})")
-        return saved
+
+        // Use try-catch to handle race condition on unique SKU constraint
+        // This is safer than check-then-insert which has a race condition window
+        return try {
+            val saved = productRepository.save(product)
+            logger.info("Product created: ${saved.id} (SKU: ${saved.sku})")
+            saved
+        } catch (e: DataIntegrityViolationException) {
+            // Check if it's a duplicate SKU error
+            if (e.message?.contains("sku", ignoreCase = true) == true ||
+                e.message?.contains("unique", ignoreCase = true) == true) {
+                logger.warn("Duplicate SKU attempted: ${product.sku}")
+                throw ProductAlreadyExistsException(product.sku)
+            }
+            throw e
+        }
     }
 
     @Caching(evict = [
@@ -117,6 +140,19 @@ class ProductService(
             .orElseThrow { ProductNotFoundException(id) }
 
         updateFn(product)
+
+        // Validate price is not negative
+        product.price?.let { price ->
+            if (price < BigDecimal.ZERO) {
+                throw IllegalArgumentException("Product price cannot be negative: $price")
+            }
+        }
+        product.costPrice?.let { costPrice ->
+            if (costPrice < BigDecimal.ZERO) {
+                throw IllegalArgumentException("Product cost price cannot be negative: $costPrice")
+            }
+        }
+
         product.completenessScore = product.calculateCompleteness()
 
         val saved = productRepository.save(product)
