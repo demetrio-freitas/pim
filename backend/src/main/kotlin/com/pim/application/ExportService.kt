@@ -4,10 +4,10 @@ import com.opencsv.CSVWriter
 import com.pim.domain.product.Product
 import com.pim.domain.product.ProductStatus
 import com.pim.infrastructure.persistence.ProductRepository
-import org.apache.poi.ss.usermodel.CellStyle
 import org.apache.poi.ss.usermodel.FillPatternType
 import org.apache.poi.ss.usermodel.IndexedColors
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import org.slf4j.LoggerFactory
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import java.io.ByteArrayOutputStream
@@ -15,13 +15,38 @@ import java.io.OutputStreamWriter
 import java.time.format.DateTimeFormatter
 import java.util.*
 
+/**
+ * Result of an export operation including metadata about truncation
+ */
+data class ExportResult(
+    val data: ByteArray,
+    val totalRecords: Int,
+    val exportedRecords: Int,
+    val wasTruncated: Boolean,
+    val format: ExportFormat
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+        other as ExportResult
+        return data.contentEquals(other.data) && totalRecords == other.totalRecords
+    }
+
+    override fun hashCode(): Int = data.contentHashCode()
+}
+
 data class ExportOptions(
     val format: ExportFormat = ExportFormat.XLSX,
     val fields: List<String> = defaultFields,
     val includeHeaders: Boolean = true,
     val status: ProductStatus? = null,
     val categoryId: UUID? = null,
-    val productIds: List<UUID>? = null
+    val productIds: List<UUID>? = null,
+    /**
+     * Maximum number of records to export. Default is no limit for CSV,
+     * MAX_EXCEL_RECORDS for XLSX to prevent memory issues.
+     */
+    val maxRecords: Int? = null
 ) {
     companion object {
         val defaultFields = listOf(
@@ -67,39 +92,131 @@ enum class ExportFormat {
 class ExportService(
     private val productRepository: ProductRepository
 ) {
+    private val logger = LoggerFactory.getLogger(ExportService::class.java)
+
+    companion object {
+        /**
+         * Page size for fetching products in batches to prevent memory issues.
+         */
+        private const val FETCH_PAGE_SIZE = 1000
+
+        /**
+         * Maximum records for Excel format to prevent memory/performance issues.
+         * Excel has a limit of ~1M rows but memory becomes problematic earlier.
+         */
+        private const val MAX_EXCEL_RECORDS = 100_000
+    }
 
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
         .withZone(java.time.ZoneId.systemDefault())
 
-    fun exportProducts(options: ExportOptions): ByteArray {
-        val products = fetchProducts(options)
+    /**
+     * Export products with full metadata including truncation information.
+     * This method should be preferred as it informs callers about partial exports.
+     */
+    fun exportProductsWithMetadata(options: ExportOptions): ExportResult {
+        val (products, totalCount, wasTruncated) = fetchProductsWithCount(options)
 
-        return when (options.format) {
+        val data = when (options.format) {
             ExportFormat.CSV -> exportToCsv(products, options)
             ExportFormat.XLSX -> exportToExcel(products, options)
         }
+
+        if (wasTruncated) {
+            logger.warn("Export was truncated: exported ${products.size} of $totalCount total records")
+        } else {
+            logger.info("Export completed: ${products.size} records exported")
+        }
+
+        return ExportResult(
+            data = data,
+            totalRecords = totalCount,
+            exportedRecords = products.size,
+            wasTruncated = wasTruncated,
+            format = options.format
+        )
     }
 
-    private fun fetchProducts(options: ExportOptions): List<Product> {
-        return when {
-            options.productIds != null && options.productIds.isNotEmpty() -> {
-                productRepository.findAllById(options.productIds)
+    /**
+     * Legacy method for backward compatibility.
+     * Consider using exportProductsWithMetadata() to get truncation information.
+     */
+    fun exportProducts(options: ExportOptions): ByteArray {
+        return exportProductsWithMetadata(options).data
+    }
+
+    private data class FetchResult(
+        val products: List<Product>,
+        val totalCount: Int,
+        val wasTruncated: Boolean
+    )
+
+    private fun fetchProductsWithCount(options: ExportOptions): FetchResult {
+        // Determine the effective limit based on format and options
+        val effectiveLimit = when {
+            options.productIds != null -> options.productIds.size
+            options.format == ExportFormat.XLSX ->
+                minOf(options.maxRecords ?: MAX_EXCEL_RECORDS, MAX_EXCEL_RECORDS)
+            options.maxRecords != null -> options.maxRecords
+            else -> Int.MAX_VALUE // No limit for CSV without explicit maxRecords
+        }
+
+        // If specific product IDs are provided, just fetch those directly
+        if (options.productIds != null && options.productIds.isNotEmpty()) {
+            val products = productRepository.findAllById(options.productIds).toList()
+            return FetchResult(products, products.size, false)
+        }
+
+        // Get total count first to report truncation accurately
+        val totalCount = getTotalCount(options)
+
+        // Fetch products using pagination to prevent OutOfMemoryError
+        val products = mutableListOf<Product>()
+        var page = 0
+        var hasMore = true
+
+        while (hasMore && products.size < effectiveLimit) {
+            val remainingNeeded = effectiveLimit - products.size
+            val pageSize = minOf(FETCH_PAGE_SIZE, remainingNeeded)
+            val pageRequest = PageRequest.of(page, pageSize)
+
+            val pageResult = when {
+                options.status != null && options.categoryId != null -> {
+                    productRepository.findByStatusAndCategoriesId(options.status, options.categoryId, pageRequest)
+                }
+                options.status != null -> {
+                    productRepository.findByStatus(options.status, pageRequest)
+                }
+                options.categoryId != null -> {
+                    productRepository.findByCategoriesId(options.categoryId, pageRequest)
+                }
+                else -> {
+                    productRepository.findAll(pageRequest)
+                }
             }
+
+            products.addAll(pageResult.content)
+            hasMore = pageResult.hasNext()
+            page++
+        }
+
+        val wasTruncated = products.size < totalCount
+        return FetchResult(products, totalCount, wasTruncated)
+    }
+
+    private fun getTotalCount(options: ExportOptions): Int {
+        return when {
             options.status != null && options.categoryId != null -> {
-                productRepository.findByStatusAndCategoriesId(
-                    options.status,
-                    options.categoryId,
-                    PageRequest.of(0, 10000)
-                ).content
+                productRepository.countByStatusAndCategoriesId(options.status, options.categoryId).toInt()
             }
             options.status != null -> {
-                productRepository.findByStatus(options.status, PageRequest.of(0, 10000)).content
+                productRepository.countByStatus(options.status).toInt()
             }
             options.categoryId != null -> {
-                productRepository.findByCategoriesId(options.categoryId, PageRequest.of(0, 10000)).content
+                productRepository.countByCategoriesId(options.categoryId).toInt()
             }
             else -> {
-                productRepository.findAll(PageRequest.of(0, 10000)).content
+                productRepository.count().toInt()
             }
         }
     }

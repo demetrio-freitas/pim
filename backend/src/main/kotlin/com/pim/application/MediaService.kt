@@ -1,5 +1,8 @@
 package com.pim.application
 
+import com.pim.config.security.FileSecurityValidator
+import com.pim.config.security.SecurityException
+import com.pim.config.security.UrlSecurityValidator
 import com.pim.domain.media.Media
 import com.pim.domain.product.MediaType
 import com.pim.domain.product.Product
@@ -7,6 +10,7 @@ import com.pim.domain.product.ProductMedia
 import com.pim.infrastructure.persistence.MediaLibraryRepository
 import com.pim.infrastructure.persistence.ProductMediaRepository
 import com.pim.infrastructure.persistence.ProductRepository
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -22,6 +26,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
+import java.time.Duration
 import java.util.*
 import javax.imageio.ImageIO
 
@@ -31,15 +36,18 @@ class MediaService(
     private val mediaLibraryRepository: MediaLibraryRepository,
     private val productMediaRepository: ProductMediaRepository,
     private val productRepository: ProductRepository,
+    private val fileSecurityValidator: FileSecurityValidator,
+    private val urlSecurityValidator: UrlSecurityValidator,
     @Value("\${media.upload.path:uploads}") private val uploadPath: String,
     @Value("\${media.base.url:http://localhost:8080/uploads}") private val baseUrl: String
 ) {
+    private val logger = LoggerFactory.getLogger(MediaService::class.java)
+    private val basePath: Path = Paths.get(uploadPath).toAbsolutePath().normalize()
 
     init {
         // Criar diretório de uploads se não existir
-        val path = Paths.get(uploadPath)
-        if (!Files.exists(path)) {
-            Files.createDirectories(path)
+        if (!Files.exists(basePath)) {
+            Files.createDirectories(basePath)
         }
     }
 
@@ -74,8 +82,17 @@ class MediaService(
     }
 
     fun upload(file: MultipartFile, folder: String? = null, userId: UUID? = null): Media {
+        // SECURITY: Validate file before processing
+        try {
+            fileSecurityValidator.validateFile(file)
+        } catch (e: SecurityException) {
+            logger.warn("File upload rejected: ${e.message}")
+            throw IllegalArgumentException("File validation failed: ${e.message}")
+        }
+
         val originalName = file.originalFilename ?: "unknown"
-        val extension = originalName.substringAfterLast('.', "")
+        val sanitizedName = fileSecurityValidator.validateFilename(originalName)
+        val extension = sanitizedName.substringAfterLast('.', "").lowercase()
         val fileName = "${UUID.randomUUID()}.$extension"
         val mimeType = file.contentType ?: "application/octet-stream"
         val type = getMediaType(mimeType)
@@ -88,12 +105,22 @@ class MediaService(
             MediaType.AUDIO -> "audio"
         }
 
-        val targetDir = Paths.get(uploadPath, typeFolder)
+        // SECURITY: Validate path is within base directory
+        val targetDir = basePath.resolve(typeFolder).normalize()
+        if (!targetDir.startsWith(basePath)) {
+            throw IllegalArgumentException("Invalid target directory")
+        }
+
         if (!Files.exists(targetDir)) {
             Files.createDirectories(targetDir)
         }
 
-        val targetPath = targetDir.resolve(fileName)
+        val targetPath = targetDir.resolve(fileName).normalize()
+        // SECURITY: Double-check path traversal prevention
+        if (!targetPath.startsWith(basePath)) {
+            throw IllegalArgumentException("Invalid file path: path traversal detected")
+        }
+
         Files.copy(file.inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING)
 
         // Obter dimensões se for imagem
@@ -182,22 +209,40 @@ class MediaService(
     }
 
     fun addMediaToProduct(productId: UUID, file: MultipartFile): ProductMedia {
+        // SECURITY: Validate file before processing
+        try {
+            fileSecurityValidator.validateFile(file)
+        } catch (e: SecurityException) {
+            logger.warn("Product media upload rejected for product $productId: ${e.message}")
+            throw IllegalArgumentException("File validation failed: ${e.message}")
+        }
+
         val product = productRepository.findById(productId)
             .orElseThrow { NoSuchElementException("Product not found with id: $productId") }
 
         val originalName = file.originalFilename ?: "unknown"
-        val extension = originalName.substringAfterLast('.', "")
+        val sanitizedName = fileSecurityValidator.validateFilename(originalName)
+        val extension = sanitizedName.substringAfterLast('.', "").lowercase()
         val fileName = "${UUID.randomUUID()}.$extension"
         val mimeType = file.contentType ?: "application/octet-stream"
         val type = getMediaType(mimeType)
 
-        // Salvar arquivo
-        val targetDir = Paths.get(uploadPath, "products", productId.toString())
+        // SECURITY: Validate path is within base directory
+        val targetDir = basePath.resolve("products").resolve(productId.toString()).normalize()
+        if (!targetDir.startsWith(basePath)) {
+            throw IllegalArgumentException("Invalid target directory")
+        }
+
         if (!Files.exists(targetDir)) {
             Files.createDirectories(targetDir)
         }
 
-        val targetPath = targetDir.resolve(fileName)
+        val targetPath = targetDir.resolve(fileName).normalize()
+        // SECURITY: Double-check path traversal prevention
+        if (!targetPath.startsWith(basePath)) {
+            throw IllegalArgumentException("Invalid file path: path traversal detected")
+        }
+
         Files.copy(file.inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING)
 
         val currentCount = productMediaRepository.countByProductId(productId)
@@ -226,30 +271,61 @@ class MediaService(
     /**
      * Add media to product from external URL.
      * Downloads the file and saves it locally.
+     * SECURITY: Validates URL to prevent SSRF attacks.
      */
     fun addMediaToProductFromUrl(productId: UUID, url: String): ProductMedia {
+        // SECURITY: Validate URL to prevent SSRF
+        try {
+            urlSecurityValidator.validateImageUrl(url)
+        } catch (e: SecurityException) {
+            logger.warn("URL download rejected for product $productId: ${e.message} - URL: $url")
+            throw IllegalArgumentException("URL validation failed: ${e.message}")
+        }
+
         val product = productRepository.findById(productId)
             .orElseThrow { NoSuchElementException("Product not found with id: $productId") }
 
-        // Download file from URL
+        // SECURITY: Download file from URL with timeout and size limits
         val client = HttpClient.newBuilder()
-            .followRedirects(HttpClient.Redirect.ALWAYS)
+            .followRedirects(HttpClient.Redirect.NORMAL) // Validate redirects
+            .connectTimeout(Duration.ofSeconds(10))
             .build()
 
         val request = HttpRequest.newBuilder()
             .uri(URI.create(url))
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .header("User-Agent", "PIM-System/1.0")
+            .timeout(Duration.ofSeconds(30))
             .GET()
             .build()
 
         val response = client.send(request, HttpResponse.BodyHandlers.ofByteArray())
+
+        // SECURITY: Handle redirects - validate redirect URL
+        if (response.statusCode() in 300..399) {
+            val redirectUrl = response.headers().firstValue("Location").orElse(null)
+            if (redirectUrl != null) {
+                urlSecurityValidator.validateRedirect(url, redirectUrl)
+            }
+        }
 
         if (response.statusCode() != 200) {
             throw RuntimeException("Failed to download image from URL: ${response.statusCode()}")
         }
 
         val bytes = response.body()
+
+        // SECURITY: Check file size (max 10MB for URL downloads)
+        val maxSize = 10 * 1024 * 1024 // 10MB
+        if (bytes.size > maxSize) {
+            throw IllegalArgumentException("Downloaded file exceeds maximum size of 10MB")
+        }
+
         val contentType = response.headers().firstValue("Content-Type").orElse("image/jpeg")
+
+        // SECURITY: Validate content type
+        if (!contentType.startsWith("image/")) {
+            throw IllegalArgumentException("URL does not point to an image: $contentType")
+        }
 
         // Determine extension from URL or content type
         val extension = when {
@@ -265,6 +341,7 @@ class MediaService(
 
         val fileName = "${UUID.randomUUID()}.$extension"
         val originalName = url.substringAfterLast('/').take(100)
+            .replace(Regex("[^a-zA-Z0-9._-]"), "_") // Sanitize
         val mimeType = when (extension) {
             "webp" -> "image/webp"
             "png" -> "image/png"
@@ -273,13 +350,21 @@ class MediaService(
         }
         val type = MediaType.IMAGE
 
-        // Save file
-        val targetDir = Paths.get(uploadPath, "products", productId.toString())
+        // SECURITY: Validate path is within base directory
+        val targetDir = basePath.resolve("products").resolve(productId.toString()).normalize()
+        if (!targetDir.startsWith(basePath)) {
+            throw IllegalArgumentException("Invalid target directory")
+        }
+
         if (!Files.exists(targetDir)) {
             Files.createDirectories(targetDir)
         }
 
-        val targetPath = targetDir.resolve(fileName)
+        val targetPath = targetDir.resolve(fileName).normalize()
+        if (!targetPath.startsWith(basePath)) {
+            throw IllegalArgumentException("Invalid file path: path traversal detected")
+        }
+
         Files.copy(ByteArrayInputStream(bytes), targetPath, StandardCopyOption.REPLACE_EXISTING)
 
         // Get dimensions
@@ -316,14 +401,24 @@ class MediaService(
     /**
      * Add external URL as media reference (without downloading).
      * The image will be served from the external URL.
+     * SECURITY: Validates URL format and scheme.
      */
     fun addExternalUrlToProduct(productId: UUID, url: String, alt: String? = null): ProductMedia {
+        // SECURITY: Validate URL to prevent javascript:/data: URLs
+        try {
+            urlSecurityValidator.validateImageUrl(url)
+        } catch (e: SecurityException) {
+            logger.warn("External URL rejected for product $productId: ${e.message} - URL: $url")
+            throw IllegalArgumentException("URL validation failed: ${e.message}")
+        }
+
         val product = productRepository.findById(productId)
             .orElseThrow { NoSuchElementException("Product not found with id: $productId") }
 
         val fileName = url.substringAfterLast('/').take(100)
-        val extension = url.substringAfterLast('.', "jpg").take(4)
-        val mimeType = when (extension.lowercase()) {
+            .replace(Regex("[^a-zA-Z0-9._-]"), "_") // Sanitize
+        val extension = url.substringAfterLast('.', "jpg").take(4).lowercase()
+        val mimeType = when (extension) {
             "webp" -> "image/webp"
             "png" -> "image/png"
             "gif" -> "image/gif"
