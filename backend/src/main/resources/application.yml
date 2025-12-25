@@ -1,0 +1,194 @@
+spring:
+  application:
+    name: pim-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/pim
+    username: pim
+    password: pim123
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  flyway:
+    enabled: false
+
+  # Cache Configuration
+  cache:
+    type: ${CACHE_TYPE:simple}  # 'simple' for in-memory, 'redis' for Redis
+
+  # Redis Configuration (when cache.type=redis)
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+  # Elasticsearch Configuration
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+
+# Elasticsearch Custom Configuration
+elasticsearch:
+  enabled: ${ELASTICSEARCH_ENABLED:false}
+  host: ${ELASTICSEARCH_HOST:localhost}
+  port: ${ELASTICSEARCH_PORT:9200}
+  username: ${ELASTICSEARCH_USERNAME:}
+  password: ${ELASTICSEARCH_PASSWORD:}
+
+# Kafka Configuration
+kafka:
+  enabled: ${KAFKA_ENABLED:false}
+
+spring.kafka:
+  bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+  consumer:
+    group-id: ${KAFKA_CONSUMER_GROUP:pim-group}
+    auto-offset-reset: earliest
+    enable-auto-commit: false
+    key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+    properties:
+      spring.json.trusted.packages: com.pim.domain.event,com.pim.infrastructure.messaging
+  producer:
+    key-serializer: org.apache.kafka.common.serialization.StringSerializer
+    value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    acks: all
+    retries: 3
+    properties:
+      enable.idempotence: true
+
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+server:
+  port: 8080
+
+# MinIO Configuration
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin123}
+  bucket-name: pim-assets
+
+# JWT Configuration
+jwt:
+  secret: cGltLXNlY3JldC1rZXktY2hhbmdlLWluLXByb2R1Y3Rpb24tbXVzdC1iZS0yNTYtYml0cy1taW5pbXVt
+  expiration: 86400000 # 24 hours
+
+# Media Upload Configuration
+media:
+  upload:
+    path: ${MEDIA_UPLOAD_PATH:./uploads}
+  base:
+    url: ${MEDIA_BASE_URL:http://localhost:8080/uploads}
+
+# OpenAPI
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+# Actuator & Metrics
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,caches
+  endpoint:
+    health:
+      show-details: when_authorized
+    caches:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    export:
+      prometheus:
+        enabled: true
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.pim: DEBUG
+    org.springframework.security: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  jpa:
+    show-sql: true
+
+logging:
+  level:
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql: TRACE
+    org.springframework.cache: TRACE
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  cache:
+    type: redis
+
+  jpa:
+    show-sql: false
+
+kafka:
+  enabled: true
+
+logging:
+  level:
+    root: WARN
+    com.pim: INFO
+    org.springframework.cache: INFO
+    org.springframework.kafka: INFO
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+
+  datasource:
+    url: jdbc:tc:postgresql:16:///pim_test
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+
+  cache:
+    type: simple
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+
+logging:
+  level:
+    root: WARN
+    com.pim: DEBUG

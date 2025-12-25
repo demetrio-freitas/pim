@@ -1,0 +1,111 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply box-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply font-sans antialiased bg-gray-50 text-dark-900 dark:bg-dark-950 dark:text-dark-50;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary-500 text-white hover:bg-primary-600 focus:ring-primary-500;
+  }
+
+  .btn-secondary {
+    @apply btn bg-dark-200 text-dark-900 hover:bg-dark-300 focus:ring-dark-500 dark:bg-dark-700 dark:text-dark-100 dark:hover:bg-dark-600;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-500 text-white hover:bg-red-600 focus:ring-red-500;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent hover:bg-dark-100 dark:hover:bg-dark-800;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 text-sm border border-dark-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:bg-dark-800 dark:border-dark-700 dark:text-white;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-dark-700 dark:text-dark-300 mb-1;
+  }
+
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-dark-100 dark:bg-dark-900 dark:border-dark-800;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 py-2 text-sm font-medium text-dark-600 rounded-lg hover:bg-dark-100 hover:text-dark-900 transition-colors dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white;
+  }
+
+  .sidebar-link.active {
+    @apply bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-400;
+  }
+
+  .table-header {
+    @apply px-4 py-3 text-left text-xs font-semibold text-dark-500 uppercase tracking-wider dark:text-dark-400;
+  }
+
+  .table-cell {
+    @apply px-4 py-3 text-sm text-dark-700 dark:text-dark-300;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply badge bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400;
+  }
+
+  .badge-warning {
+    @apply badge bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400;
+  }
+
+  .badge-danger {
+    @apply badge bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400;
+  }
+
+  .badge-info {
+    @apply badge bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400;
+  }
+
+  .badge-default {
+    @apply badge bg-dark-100 text-dark-800 dark:bg-dark-800 dark:text-dark-300;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-dark-100 dark:bg-dark-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-dark-300 rounded-full dark:bg-dark-600;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-dark-400 dark:bg-dark-500;
+}

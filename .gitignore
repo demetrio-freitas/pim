@@ -1,0 +1,54 @@
+# ==================== GENERAL ====================
+.DS_Store
+*.log
+*.tmp
+*.temp
+.env
+.env.local
+.env.*.local
+
+# ==================== BACKEND (Kotlin/Spring Boot) ====================
+backend/build/
+backend/.gradle/
+backend/out/
+backend/*.jar
+backend/*.war
+backend/bin/
+backend/.idea/
+backend/*.iml
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# ==================== FRONTEND (Next.js) ====================
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.pnp/
+frontend/.pnp.js
+frontend/coverage/
+frontend/.vercel
+frontend/.turbo
+
+# NPM
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+
+# ==================== IDE ====================
+.idea/
+*.iml
+*.iws
+.vscode/
+*.swp
+*.swo
+*~
+
+# ==================== OS ====================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
