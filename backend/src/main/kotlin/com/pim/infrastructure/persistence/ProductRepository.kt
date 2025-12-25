@@ -69,6 +69,20 @@ interface ProductRepository : JpaRepository<Product, UUID>, JpaSpecificationExec
     """)
     fun findByIdWithMedia(@Param("id") id: UUID): Product?
 
+    /**
+     * Optimized: Fetch product with categories and media in one query.
+     * Note: Due to MultipleBagFetchException, we can't fetch all 3 collections at once.
+     * This query fetches categories and media (both are Sets, so no bag exception).
+     * Attributes should be fetched in a second query if needed.
+     */
+    @Query("""
+        SELECT DISTINCT p FROM Product p
+        LEFT JOIN FETCH p.categories
+        LEFT JOIN FETCH p.media
+        WHERE p.id = :id
+    """)
+    fun findByIdWithCategoriesAndMedia(@Param("id") id: UUID): Product?
+
     @Query("SELECT p FROM Product p ORDER BY p.createdAt DESC LIMIT :limit")
     fun findRecentProducts(@Param("limit") limit: Int): List<Product>
 

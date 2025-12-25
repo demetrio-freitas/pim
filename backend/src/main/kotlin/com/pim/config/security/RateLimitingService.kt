@@ -24,6 +24,18 @@ class RateLimitingService(
     private val rateLimitMap = ConcurrentHashMap<String, RateLimitEntry>()
     private val loginAttemptMap = ConcurrentHashMap<String, LoginAttemptEntry>()
 
+    init {
+        // SECURITY: Warn if Redis is not available - lockout won't persist across restarts
+        if (redisTemplate == null) {
+            logger.warn(
+                "Redis not available! Rate limiting and account lockout will use in-memory storage. " +
+                "WARNING: Lockouts will be cleared on server restart. This is NOT recommended for production."
+            )
+        } else {
+            logger.info("Rate limiting initialized with Redis storage")
+        }
+    }
+
     companion object {
         private const val RATE_LIMIT_PREFIX = "rate:"
         private const val LOGIN_ATTEMPT_PREFIX = "login:"

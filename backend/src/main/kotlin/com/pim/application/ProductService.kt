@@ -41,10 +41,11 @@ class ProductService(
     @Transactional(readOnly = true)
     fun findById(id: UUID): Product? {
         logger.debug("Fetching product by id: $id")
-        // Fetch in separate queries to avoid MultipleBagFetchException
-        val product = productRepository.findByIdWithCategories(id) ?: return null
+        // OPTIMIZED: Use 2 queries instead of 3
+        // Query 1: Fetch product with categories and media (both are Sets, no MultipleBagFetchException)
+        val product = productRepository.findByIdWithCategoriesAndMedia(id) ?: return null
+        // Query 2: Fetch attributes separately (List type requires separate query)
         productRepository.findByIdWithAttributes(id)
-        productRepository.findByIdWithMedia(id)
         return product
     }
 

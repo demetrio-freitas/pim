@@ -43,6 +43,12 @@ class SecurityConfig(
                 headers.xssProtection { it.disable() }  // Let CSP handle XSS
                 headers.referrerPolicy { it.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN) }
                 headers.permissionsPolicy { it.policy("camera=(), microphone=(), geolocation=(), payment=()") }
+                // SECURITY: HSTS - Force HTTPS connections
+                headers.httpStrictTransportSecurity { hsts ->
+                    hsts.includeSubDomains(true)
+                    hsts.maxAgeInSeconds(31536000) // 1 year
+                    hsts.preload(true)
+                }
                 // Content Security Policy
                 headers.contentSecurityPolicy { csp ->
                     csp.policyDirectives(

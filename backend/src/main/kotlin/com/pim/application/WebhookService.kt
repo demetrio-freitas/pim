@@ -1,6 +1,7 @@
 package com.pim.application
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.pim.config.security.UrlSecurityValidator
 import com.pim.domain.integration.*
 import com.pim.infrastructure.persistence.WebhookLogRepository
 import com.pim.infrastructure.persistence.WebhookRepository
@@ -88,12 +89,26 @@ data class WebhookPayload(
 class WebhookService(
     private val webhookRepository: WebhookRepository,
     private val webhookLogRepository: WebhookLogRepository,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val urlSecurityValidator: UrlSecurityValidator
 ) {
     private val logger = LoggerFactory.getLogger(WebhookService::class.java)
     private val restTemplate = RestTemplate()
 
     fun create(request: WebhookCreateRequest, createdBy: UUID?): WebhookResponse {
+        // SECURITY: Validate webhook URL to prevent SSRF attacks
+        try {
+            urlSecurityValidator.validateUrl(request.url)
+        } catch (e: SecurityException) {
+            logger.warn("Webhook URL validation failed: ${e.message} - URL: ${request.url}")
+            throw IllegalArgumentException("Invalid webhook URL: ${e.message}")
+        }
+
+        // SECURITY: Validate custom headers for injection attacks
+        request.customHeaders.forEach { (key, value) ->
+            validateHeader(key, value)
+        }
+
         val webhook = Webhook(
             name = request.name,
             url = request.url,
@@ -113,6 +128,21 @@ class WebhookService(
     fun update(id: UUID, request: WebhookUpdateRequest): WebhookResponse {
         val webhook = webhookRepository.findById(id)
             .orElseThrow { IllegalArgumentException("Webhook não encontrado") }
+
+        // SECURITY: Validate new webhook URL if provided
+        request.url?.let { url ->
+            try {
+                urlSecurityValidator.validateUrl(url)
+            } catch (e: SecurityException) {
+                logger.warn("Webhook URL validation failed on update: ${e.message} - URL: $url")
+                throw IllegalArgumentException("Invalid webhook URL: ${e.message}")
+            }
+        }
+
+        // SECURITY: Validate custom headers if provided
+        request.customHeaders?.forEach { (key, value) ->
+            validateHeader(key, value)
+        }
 
         request.name?.let { webhook.name = it }
         request.url?.let { webhook.url = it }
@@ -284,6 +314,37 @@ class WebhookService(
         mac.init(secretKey)
         val hash = mac.doFinal(payload.toByteArray())
         return "sha256=" + hash.joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * SECURITY: Validate header key and value to prevent HTTP header injection
+     */
+    private fun validateHeader(key: String, value: String) {
+        // Check for CRLF injection
+        if (key.contains("\r") || key.contains("\n") || value.contains("\r") || value.contains("\n")) {
+            throw IllegalArgumentException("Invalid header: CRLF characters not allowed")
+        }
+
+        // Check for null bytes
+        if (key.contains('\u0000') || value.contains('\u0000')) {
+            throw IllegalArgumentException("Invalid header: null bytes not allowed")
+        }
+
+        // Validate header name format (RFC 7230)
+        if (!key.matches(Regex("^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"))) {
+            throw IllegalArgumentException("Invalid header name: $key")
+        }
+
+        // Check header value length
+        if (value.length > 8192) {
+            throw IllegalArgumentException("Header value too long: $key")
+        }
+
+        // Block sensitive headers that shouldn't be user-controlled
+        val blockedHeaders = setOf("host", "content-length", "transfer-encoding", "connection", "cookie", "authorization")
+        if (key.lowercase() in blockedHeaders) {
+            throw IllegalArgumentException("Header not allowed: $key")
+        }
     }
 
     fun testWebhook(id: UUID): WebhookLogResponse {
