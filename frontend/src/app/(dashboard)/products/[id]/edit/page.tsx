@@ -22,6 +22,10 @@ import {
 import AIAssistant from '@/components/AIAssistant';
 import ImageManager from '@/components/ImageManager';
 import { VariantManager } from '@/components/VariantManager';
+import { BundleManager } from '@/components/BundleManager';
+import { GroupedProductManager } from '@/components/GroupedProductManager';
+import { VirtualProductManager, defaultVirtualProductData } from '@/components/VirtualProductManager';
+import { BundleComponent, GroupedProductItem, VirtualProductData } from '@/types';
 
 interface ProductMedia {
   id: string;
@@ -33,10 +37,10 @@ interface ProductMedia {
 
 const productTypes = [
   { value: 'SIMPLE', label: 'Simples' },
-  { value: 'CONFIGURABLE', label: 'Configurável' },
-  { value: 'VIRTUAL', label: 'Virtual' },
-  { value: 'BUNDLE', label: 'Bundle' },
+  { value: 'CONFIGURABLE', label: 'Configurável (Variações)' },
+  { value: 'BUNDLE', label: 'Bundle (Kit)' },
   { value: 'GROUPED', label: 'Agrupado' },
+  { value: 'VIRTUAL', label: 'Virtual' },
 ];
 
 export default function EditProductPage() {
@@ -64,11 +68,42 @@ export default function EditProductPage() {
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [isImageManagerOpen, setIsImageManagerOpen] = useState(false);
+  const [bundleComponents, setBundleComponents] = useState<BundleComponent[]>([]);
+  const [groupedItems, setGroupedItems] = useState<GroupedProductItem[]>([]);
+  const [virtualData, setVirtualData] = useState<VirtualProductData>(defaultVirtualProductData);
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product', params.id],
     queryFn: () => api.getProduct(params.id as string),
   });
+
+  // Fetch bundle components if product is a bundle
+  const { data: bundleData } = useQuery({
+    queryKey: ['bundle-components', params.id],
+    queryFn: () => api.getBundleComponents(params.id as string),
+    enabled: !!product && product.type === 'BUNDLE',
+  });
+
+  // Update bundle components when data is fetched
+  useEffect(() => {
+    if (bundleData) {
+      setBundleComponents(bundleData);
+    }
+  }, [bundleData]);
+
+  // Fetch grouped items if product is a grouped product
+  const { data: groupedData } = useQuery({
+    queryKey: ['grouped-items', params.id],
+    queryFn: () => api.getGroupedItems(params.id as string),
+    enabled: !!product && product.type === 'GROUPED',
+  });
+
+  // Update grouped items when data is fetched
+  useEffect(() => {
+    if (groupedData) {
+      setGroupedItems(groupedData);
+    }
+  }, [groupedData]);
 
   useEffect(() => {
     if (product) {
@@ -524,6 +559,44 @@ export default function EditProductPage() {
             productSku={product.sku}
             productName={formData.name}
           />
+        )}
+
+        {/* Bundle (Kit) - apenas para produtos bundle */}
+        {product.type === 'BUNDLE' && (
+          <div className="card p-6">
+            <BundleManager
+              bundleId={params.id as string}
+              components={bundleComponents}
+              onComponentsChange={(components) => {
+                setBundleComponents(components);
+                queryClient.invalidateQueries({ queryKey: ['bundle-components', params.id] });
+              }}
+            />
+          </div>
+        )}
+
+        {/* Agrupado - apenas para produtos agrupados */}
+        {product.type === 'GROUPED' && (
+          <div className="card p-6">
+            <GroupedProductManager
+              parentId={params.id as string}
+              items={groupedItems}
+              onItemsChange={(items) => {
+                setGroupedItems(items);
+                queryClient.invalidateQueries({ queryKey: ['grouped-items', params.id] });
+              }}
+            />
+          </div>
+        )}
+
+        {/* Virtual - apenas para produtos virtuais */}
+        {product.type === 'VIRTUAL' && (
+          <div className="card p-6">
+            <VirtualProductManager
+              data={virtualData}
+              onChange={(data) => setVirtualData(data)}
+            />
+          </div>
         )}
 
         {/* SEO */}

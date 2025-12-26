@@ -46,7 +46,7 @@ export function ProductTypeSelector({
   showDescriptions = true,
   layout = 'grid',
 }: ProductTypeSelectorProps) {
-  const types: ProductType[] = allowedTypes || ['SIMPLE', 'CONFIGURABLE', 'VIRTUAL', 'BUNDLE', 'GROUPED'];
+  const types: ProductType[] = allowedTypes || ['SIMPLE', 'CONFIGURABLE', 'BUNDLE', 'GROUPED', 'VIRTUAL'];
 
   return (
     <div className={cn(

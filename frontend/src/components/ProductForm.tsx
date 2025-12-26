@@ -33,8 +33,13 @@ import { NCMSuggester } from './NCMSuggester';
 import { TagSuggester } from './TagSuggester';
 import { SEOOptimizer } from './SEOOptimizer';
 import { SpedItemTypeSelector } from './SpedItemTypeSelector';
+import { VariantManager } from './VariantManager';
+import { BundleManager } from './BundleManager';
+import { GroupedProductManager } from './GroupedProductManager';
+import { VirtualProductManager, defaultVirtualProductData } from './VirtualProductManager';
+import { TechnicalSheetTab } from './TechnicalSheetTab';
 import { cn } from '@/lib/utils';
-import { SpedItemType, ProductType } from '@/types';
+import { SpedItemType, ProductType, BundleComponent, GroupedProductItem, VirtualProductData, AttributeValueInput } from '@/types';
 
 // Storage key for required fields configuration
 const REQUIRED_FIELDS_STORAGE_KEY = 'pim_required_fields';
@@ -53,9 +58,12 @@ const getRequiredFieldsConfig = (): Record<string, boolean> => {
   return { sku: true, name: true };
 };
 
-// Tab definitions
-const tabs = [
+import { Grid3X3, Boxes, Users, Cloud, ClipboardList } from 'lucide-react';
+
+// Tab definitions - base tabs that always show
+const baseTabs = [
   { id: 'general', label: 'Geral', icon: Package },
+  { id: 'specs', label: 'Ficha Técnica', icon: ClipboardList },
   { id: 'prices', label: 'Preços', icon: DollarSign },
   { id: 'inventory', label: 'Estoque', icon: Warehouse },
   { id: 'shipping', label: 'Envio', icon: Truck },
@@ -64,13 +72,46 @@ const tabs = [
   { id: 'integrations', label: 'Integrações', icon: Link2 },
 ];
 
+// Conditional tabs based on product type
+const variationsTab = { id: 'variations', label: 'Variações', icon: Grid3X3 };
+const kitTab = { id: 'kit', label: 'Kit', icon: Boxes };
+const groupedTab = { id: 'grouped', label: 'Agrupado', icon: Users };
+const virtualTab = { id: 'virtual', label: 'Virtual', icon: Cloud };
+
+// Get tabs based on product type
+const getTabsForProductType = (productType: string) => {
+  const tabs = [...baseTabs];
+
+  // Insert Variações tab after Geral for CONFIGURABLE products
+  if (productType === 'CONFIGURABLE') {
+    tabs.splice(1, 0, variationsTab);
+  }
+
+  // Insert Kit tab after Geral for BUNDLE products
+  if (productType === 'BUNDLE') {
+    tabs.splice(1, 0, kitTab);
+  }
+
+  // Insert Agrupado tab after Geral for GROUPED products
+  if (productType === 'GROUPED') {
+    tabs.splice(1, 0, groupedTab);
+  }
+
+  // Insert Virtual tab after Geral for VIRTUAL products
+  if (productType === 'VIRTUAL') {
+    tabs.splice(1, 0, virtualTab);
+  }
+
+  return tabs;
+};
+
 // Product types
 const productTypes = [
   { value: 'SIMPLE', label: 'Simples' },
-  { value: 'CONFIGURABLE', label: 'Configurável' },
-  { value: 'VIRTUAL', label: 'Virtual' },
-  { value: 'BUNDLE', label: 'Bundle' },
+  { value: 'CONFIGURABLE', label: 'Configurável (Variações)' },
+  { value: 'BUNDLE', label: 'Bundle (Kit)' },
   { value: 'GROUPED', label: 'Agrupado' },
+  { value: 'VIRTUAL', label: 'Virtual' },
 ];
 
 // Product conditions
@@ -241,6 +282,15 @@ interface ProductFormProps {
   isLoading?: boolean;
   errors?: Record<string, string>;
   mode: 'create' | 'edit';
+  productId?: string;
+  bundleComponents?: BundleComponent[];
+  onBundleComponentsChange?: (components: BundleComponent[]) => void;
+  groupedItems?: GroupedProductItem[];
+  onGroupedItemsChange?: (items: GroupedProductItem[]) => void;
+  virtualData?: VirtualProductData;
+  onVirtualDataChange?: (data: VirtualProductData) => void;
+  technicalAttributes?: AttributeValueInput[];
+  onTechnicalAttributesChange?: (attrs: AttributeValueInput[]) => void;
 }
 
 const defaultFormData: ProductFormData = {
@@ -319,12 +369,23 @@ const defaultFormData: ProductFormData = {
   downloadExpiry: '',
 };
 
-export function ProductForm({ initialData, onSubmit, isLoading, errors = {}, mode }: ProductFormProps) {
+export function ProductForm({ initialData, onSubmit, isLoading, errors = {}, mode, productId, bundleComponents = [], onBundleComponentsChange, groupedItems = [], onGroupedItemsChange, virtualData, onVirtualDataChange, technicalAttributes = [], onTechnicalAttributesChange }: ProductFormProps) {
   const [activeTab, setActiveTab] = useState('general');
   const [formData, setFormData] = useState<ProductFormData>({ ...defaultFormData, ...initialData });
   const [tagInput, setTagInput] = useState('');
   const [requiredFields, setRequiredFields] = useState<Record<string, boolean>>({ sku: true, name: true });
   const [imageError, setImageError] = useState<string | null>(null);
+
+  // Get dynamic tabs based on product type
+  const tabs = getTabsForProductType(formData.type);
+
+  // Reset to general tab if current tab is no longer available
+  useEffect(() => {
+    const tabExists = tabs.some(tab => tab.id === activeTab);
+    if (!tabExists) {
+      setActiveTab('general');
+    }
+  }, [formData.type, tabs, activeTab]);
 
   // Load required fields configuration on mount
   useEffect(() => {
@@ -393,6 +454,89 @@ export function ProductForm({ initialData, onSubmit, isLoading, errors = {}, mod
     switch (activeTab) {
       case 'general':
         return <GeneralTab formData={formData} onChange={handleChange} setFormData={setFormData} errors={errors} tagInput={tagInput} setTagInput={setTagInput} onAddTag={handleAddTag} onRemoveTag={handleRemoveTag} mode={mode} isRequired={isRequired} />;
+      case 'variations':
+        // Variações tab - only shown for CONFIGURABLE products
+        if (mode === 'create') {
+          return (
+            <div className="p-8 text-center">
+              <Grid3X3 className="w-12 h-12 mx-auto text-dark-300 mb-3" />
+              <h4 className="font-medium text-dark-700 dark:text-dark-300">
+                Salve o produto primeiro
+              </h4>
+              <p className="text-sm text-dark-500 mt-1">
+                As variações podem ser configuradas após salvar o produto.
+              </p>
+            </div>
+          );
+        }
+        return (
+          <VariantManager
+            productId={productId!}
+            productSku={formData.sku}
+            productName={formData.name}
+          />
+        );
+      case 'kit':
+        // Kit tab - only shown for BUNDLE products
+        if (mode === 'create') {
+          return (
+            <div className="p-8 text-center">
+              <Boxes className="w-12 h-12 mx-auto text-dark-300 mb-3" />
+              <h4 className="font-medium text-dark-700 dark:text-dark-300">
+                Salve o produto primeiro
+              </h4>
+              <p className="text-sm text-dark-500 mt-1">
+                Os componentes do kit podem ser configurados após salvar o produto.
+              </p>
+            </div>
+          );
+        }
+        return (
+          <BundleManager
+            bundleId={productId!}
+            components={bundleComponents}
+            onComponentsChange={onBundleComponentsChange || (() => {})}
+          />
+        );
+      case 'grouped':
+        // Agrupado tab - only shown for GROUPED products
+        if (mode === 'create') {
+          return (
+            <div className="p-8 text-center">
+              <Users className="w-12 h-12 mx-auto text-dark-300 mb-3" />
+              <h4 className="font-medium text-dark-700 dark:text-dark-300">
+                Salve o produto primeiro
+              </h4>
+              <p className="text-sm text-dark-500 mt-1">
+                Os produtos relacionados podem ser configurados após salvar o produto.
+              </p>
+            </div>
+          );
+        }
+        return (
+          <GroupedProductManager
+            parentId={productId!}
+            items={groupedItems}
+            onItemsChange={onGroupedItemsChange || (() => {})}
+          />
+        );
+      case 'specs':
+        // Ficha Técnica tab - always available
+        return (
+          <TechnicalSheetTab
+            productId={productId}
+            initialValues={technicalAttributes}
+            onChange={onTechnicalAttributesChange || (() => {})}
+          />
+        );
+      case 'virtual':
+        // Virtual tab - for VIRTUAL products
+        return (
+          <VirtualProductManager
+            data={virtualData || defaultVirtualProductData}
+            onChange={onVirtualDataChange || (() => {})}
+          />
+        );
       case 'prices':
         return <PricesTab formData={formData} onChange={handleChange} errors={errors} isRequired={isRequired} />;
       case 'inventory':

@@ -288,18 +288,18 @@ export interface StockDecrementResult {
 // Product Type Labels
 export const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
   SIMPLE: 'Simples',
-  CONFIGURABLE: 'Configurável',
-  VIRTUAL: 'Virtual',
-  BUNDLE: 'Bundle',
+  CONFIGURABLE: 'Configurável (Variações)',
+  BUNDLE: 'Bundle (Kit)',
   GROUPED: 'Agrupado',
+  VIRTUAL: 'Virtual',
 };
 
 export const PRODUCT_TYPE_DESCRIPTIONS: Record<ProductType, string> = {
   SIMPLE: 'Produto individual com SKU único',
   CONFIGURABLE: 'Produto pai com variantes baseadas em atributos',
-  VIRTUAL: 'Produto não-físico como serviços ou downloads',
   BUNDLE: 'Conjunto fixo de produtos vendidos como unidade única',
   GROUPED: 'Produtos relacionados apresentados juntos',
+  VIRTUAL: 'Produto não-físico como serviços ou downloads',
 };
 
 // ==================== SPED FISCAL TYPES ====================
@@ -386,4 +386,351 @@ export const SPED_ITEM_TYPE_CODES: Record<SpedItemType, string> = {
   SERVICOS: '09',
   OUTROS_INSUMOS: '10',
   OUTRAS: '99',
+};
+
+// ==================== VIRTUAL PRODUCT TYPES ====================
+
+/**
+ * Categoria do Produto Virtual
+ */
+export type VirtualCategory =
+  | 'digital_content'   // Conteúdo digital (e-books, vídeos, áudios)
+  | 'course'            // Curso/Educação (cursos online, webinars)
+  | 'software'          // Software/Licença (aplicativos, plugins)
+  | 'service'           // Serviço (consultoria, design, suporte)
+  | 'subscription'      // Assinatura (streaming, SaaS, membros)
+  | 'warranty'          // Garantia/Seguro (garantia estendida)
+  | 'voucher';          // Voucher/Crédito (gift cards, vale-presente)
+
+/**
+ * Método de Entrega Digital
+ */
+export type DeliveryMethod =
+  | 'direct_download'     // Download direto
+  | 'platform_access'     // Acesso a plataforma
+  | 'activation_code'     // Código de ativação
+  | 'email_instructions'  // E-mail com instruções
+  | 'immediate_access';   // Acesso imediato
+
+/**
+ * Tipo de Licença
+ */
+export type LicenseType =
+  | 'personal'      // Pessoal (Single User)
+  | 'family'        // Familiar
+  | 'commercial'    // Comercial
+  | 'lifetime'      // Vitalícia
+  | 'subscription'  // Assinatura
+  | 'trial';        // Trial/Teste
+
+/**
+ * Tipo de Controle de Estoque Virtual
+ */
+export type VirtualStockType =
+  | 'unlimited'  // Ilimitado (sempre disponível)
+  | 'licensed'   // Por licenças (quantidade limitada)
+  | 'slots'      // Por vagas (eventos, webinars)
+  | 'none';      // Sem controle (sob demanda)
+
+/**
+ * Tipo de Validade
+ */
+export type ValidityType =
+  | 'unlimited'  // Sem expiração
+  | 'days'       // Dias após a compra
+  | 'date';      // Data específica
+
+/**
+ * Configuração de Entrega Digital
+ */
+export interface DeliveryConfig {
+  method: DeliveryMethod;
+
+  // Para download direto
+  fileUrl?: string;
+  downloadLimit?: number;
+  linkExpirationHours?: number;
+
+  // Para acesso a plataforma
+  platformUrl?: string;
+  autoCreateAccount?: boolean;
+
+  // Para código de ativação
+  codeFormat?: string;
+  autoGenerateCode?: boolean;
+
+  // Para e-mail
+  emailTemplate?: string;
+  emailAttachments?: string[];
+}
+
+/**
+ * Configuração de Licença
+ */
+export interface LicenseConfig {
+  type: LicenseType;
+
+  // Limites
+  maxDevices?: number;
+  maxConcurrentAccess?: number;
+  maxViews?: number;
+
+  // Termos
+  termsOfUse?: string;
+  licenseKey?: string;
+
+  // Transferência
+  allowTransfer: boolean;
+  transferFee?: number;
+}
+
+/**
+ * Configuração de Validade
+ */
+export interface ValidityConfig {
+  hasExpiration: boolean;
+  type?: ValidityType;
+
+  // Se type = 'days'
+  validityDays?: number;
+
+  // Se type = 'date'
+  expirationDate?: string;
+
+  // Alertas
+  sendExpirationAlert: boolean;
+  alertDaysBefore?: number;
+
+  // Renovação
+  allowRenewal: boolean;
+  renewalDiscount?: number;
+  autoRenewal?: boolean;
+}
+
+/**
+ * Configuração de Estoque Virtual
+ */
+export interface VirtualStockManagement {
+  type: VirtualStockType;
+
+  // Se type = 'licensed' ou 'slots'
+  quantity?: number;
+  lowStockAlert?: number;
+
+  // Backorder
+  allowBackorder: boolean;
+  backorderText?: string;
+}
+
+/**
+ * Requisitos do Sistema
+ */
+export interface SystemRequirements {
+  operatingSystems: {
+    windows: boolean;
+    macos: boolean;
+    linux: boolean;
+    android: boolean;
+    ios: boolean;
+  };
+  minimumRequirements?: string;
+  compatibility?: string;
+  internetRequired: boolean;
+  storageSpace?: string;
+  ram?: string;
+  processor?: string;
+}
+
+/**
+ * Limites de Uso
+ */
+export interface UsageLimits {
+  hasDownloadLimit: boolean;
+  maxDownloads?: number;
+
+  hasDeviceLimit: boolean;
+  maxDevices?: number;
+
+  hasConcurrentAccessLimit: boolean;
+  maxConcurrentAccess?: number;
+
+  hasViewLimit: boolean;
+  maxViews?: number;
+
+  hasTimeLimit: boolean;
+  maxMinutes?: number;
+}
+
+/**
+ * Dados Completos do Produto Virtual
+ */
+export interface VirtualProductData {
+  category: VirtualCategory;
+  delivery: DeliveryConfig;
+  license: LicenseConfig;
+  validity: ValidityConfig;
+  stock: VirtualStockManagement;
+  requirements?: SystemRequirements;
+  usageLimits?: UsageLimits;
+  instructions?: string;
+  supportInfo?: {
+    email?: string;
+    phone?: string;
+    url?: string;
+    hours?: string;
+  };
+}
+
+/**
+ * Labels para categorias de produto virtual
+ */
+export const VIRTUAL_CATEGORY_LABELS: Record<VirtualCategory, string> = {
+  digital_content: 'Conteúdo Digital',
+  course: 'Curso / Educação',
+  software: 'Software / Licença',
+  service: 'Serviço',
+  subscription: 'Assinatura',
+  warranty: 'Garantia / Seguro',
+  voucher: 'Voucher / Crédito',
+};
+
+export const VIRTUAL_CATEGORY_DESCRIPTIONS: Record<VirtualCategory, string> = {
+  digital_content: 'E-books, vídeos, áudios, fotos, jogos digitais',
+  course: 'Cursos online, webinars, videoaulas, tutoriais',
+  software: 'Aplicativos, plugins, extensões, chaves de ativação',
+  service: 'Consultoria, design, suporte técnico, coaching',
+  subscription: 'Streaming, SaaS, área de membros, cloud storage',
+  warranty: 'Garantia estendida, seguros, planos de proteção',
+  voucher: 'Gift cards, vale-presente, créditos, cupons',
+};
+
+export const DELIVERY_METHOD_LABELS: Record<DeliveryMethod, string> = {
+  direct_download: 'Download Direto',
+  platform_access: 'Acesso a Plataforma',
+  activation_code: 'Código de Ativação',
+  email_instructions: 'E-mail com Instruções',
+  immediate_access: 'Acesso Imediato',
+};
+
+export const LICENSE_TYPE_LABELS: Record<LicenseType, string> = {
+  personal: 'Pessoal (Single User)',
+  family: 'Familiar (até 5 pessoas)',
+  commercial: 'Comercial (Empresas)',
+  lifetime: 'Vitalícia',
+  subscription: 'Assinatura',
+  trial: 'Trial / Teste',
+};
+
+export const VIRTUAL_STOCK_TYPE_LABELS: Record<VirtualStockType, string> = {
+  unlimited: 'Ilimitado (sempre disponível)',
+  licensed: 'Por Licenças (quantidade limitada)',
+  slots: 'Por Vagas (eventos, webinars)',
+  none: 'Sem Controle (sob demanda)',
+};
+
+// ==================== ATTRIBUTE TYPES (EAV - Entity-Attribute-Value) ====================
+
+/**
+ * Tipo de campo do atributo
+ */
+export type AttributeFieldType =
+  | 'text'         // Texto livre
+  | 'number'       // Número
+  | 'select'       // Seleção única
+  | 'multi-select' // Múltipla seleção
+  | 'boolean';     // Sim/Não
+
+/**
+ * Categoria do atributo para agrupamento
+ */
+export type AttributeCategoryType =
+  | 'hardware'
+  | 'vestuario'
+  | 'dimensoes'
+  | 'eletrico'
+  | 'alimentos'
+  | 'moveis'
+  | 'geral'
+  | 'outro';
+
+/**
+ * Atributo do catálogo (definição)
+ */
+export interface TechnicalAttribute {
+  id: string;
+  name: string;                      // Slug (ex: "processor")
+  label: string;                     // Nome exibição (ex: "Processador")
+  type: AttributeFieldType;
+  unit?: string;                     // Unidade (ex: "GB", "kg")
+  options?: string[];                // Para select/multi-select
+  category: AttributeCategoryType;
+
+  // Configurações de exibição
+  visibleFrontend: boolean;          // Mostrar na página do produto
+  filterable: boolean;               // Usar como filtro
+  comparable: boolean;               // Comparar produtos
+  searchable: boolean;               // Incluir na busca
+  required: boolean;                 // Obrigatório
+
+  displayOrder: number;
+  createdAt?: string;
+}
+
+/**
+ * Valor de atributo associado a um produto
+ */
+export interface ProductAttributeValue {
+  id?: string;
+  productId?: string;
+  attributeId: string;
+  attribute?: TechnicalAttribute;    // Join com tabela attributes
+  value: string | number | boolean | string[];
+  displayOrder: number;
+}
+
+/**
+ * Valor simplificado para formulários
+ */
+export interface AttributeValueInput {
+  attributeId: string;
+  value: string | number | boolean | string[];
+}
+
+/**
+ * Labels para categorias de atributos
+ */
+export const ATTRIBUTE_CATEGORY_LABELS: Record<AttributeCategoryType, string> = {
+  hardware: 'Hardware / Eletrônicos',
+  vestuario: 'Vestuário / Moda',
+  dimensoes: 'Dimensões',
+  eletrico: 'Elétrico',
+  alimentos: 'Alimentos / Bebidas',
+  moveis: 'Móveis / Decoração',
+  geral: 'Geral',
+  outro: 'Outros',
+};
+
+/**
+ * Ícones para categorias de atributos
+ */
+export const ATTRIBUTE_CATEGORY_ICONS: Record<AttributeCategoryType, string> = {
+  hardware: '💻',
+  vestuario: '👕',
+  dimensoes: '📏',
+  eletrico: '⚡',
+  alimentos: '🍎',
+  moveis: '🪑',
+  geral: '📦',
+  outro: '🏷️',
+};
+
+/**
+ * Labels para tipos de campo
+ */
+export const ATTRIBUTE_FIELD_TYPE_LABELS: Record<AttributeFieldType, string> = {
+  text: 'Texto livre',
+  number: 'Número',
+  select: 'Seleção única',
+  'multi-select': 'Múltipla seleção',
+  boolean: 'Sim/Não',
 };
