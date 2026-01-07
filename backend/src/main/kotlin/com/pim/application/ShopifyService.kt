@@ -224,9 +224,24 @@ class ShopifyService(
         return saved.toResponse()
     }
 
+    /**
+     * Delete a Shopify store and all its mappings.
+     * Uses @Transactional to ensure both deletions happen atomically -
+     * if store deletion fails, mapping deletions are rolled back.
+     */
     fun deleteStore(id: UUID) {
+        // Verify store exists first
+        if (!storeRepository.existsById(id)) {
+            throw IllegalArgumentException("Loja Shopify não encontrada")
+        }
+
+        // Delete in correct order: mappings first (foreign key), then store
+        // This happens within a transaction, so if anything fails, it's rolled back
+        val mappingCount = mappingRepository.countByStoreId(id)
         mappingRepository.deleteByStoreId(id)
         storeRepository.deleteById(id)
+
+        logger.info("Deleted Shopify store $id with $mappingCount product mappings")
     }
 
     fun getStoreById(id: UUID): ShopifyStoreResponse? {

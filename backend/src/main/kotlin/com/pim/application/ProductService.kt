@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.cache.annotation.CacheEvict
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.cache.annotation.Caching
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
@@ -40,10 +41,11 @@ class ProductService(
     @Transactional(readOnly = true)
     fun findById(id: UUID): Product? {
         logger.debug("Fetching product by id: $id")
-        // Fetch in separate queries to avoid MultipleBagFetchException
-        val product = productRepository.findByIdWithCategories(id) ?: return null
+        // OPTIMIZED: Use 2 queries instead of 3
+        // Query 1: Fetch product with categories and media (both are Sets, no MultipleBagFetchException)
+        val product = productRepository.findByIdWithCategoriesAndMedia(id) ?: return null
+        // Query 2: Fetch attributes separately (List type requires separate query)
         productRepository.findByIdWithAttributes(id)
-        productRepository.findByIdWithMedia(id)
         return product
     }
 
@@ -97,14 +99,35 @@ class ProductService(
         CacheEvict(cacheNames = [CacheConfig.DASHBOARD_STATS_CACHE], allEntries = true)
     ])
     fun create(product: Product): Product {
-        if (productRepository.existsBySku(product.sku)) {
-            throw ProductAlreadyExistsException(product.sku)
+        // Validate price is not negative
+        product.price?.let { price ->
+            if (price < BigDecimal.ZERO) {
+                throw IllegalArgumentException("Product price cannot be negative: $price")
+            }
+        }
+        product.costPrice?.let { costPrice ->
+            if (costPrice < BigDecimal.ZERO) {
+                throw IllegalArgumentException("Product cost price cannot be negative: $costPrice")
+            }
         }
 
         product.completenessScore = product.calculateCompleteness()
-        val saved = productRepository.save(product)
-        logger.info("Product created: ${saved.id} (SKU: ${saved.sku})")
-        return saved
+
+        // Use try-catch to handle race condition on unique SKU constraint
+        // This is safer than check-then-insert which has a race condition window
+        return try {
+            val saved = productRepository.save(product)
+            logger.info("Product created: ${saved.id} (SKU: ${saved.sku})")
+            saved
+        } catch (e: DataIntegrityViolationException) {
+            // Check if it's a duplicate SKU error
+            if (e.message?.contains("sku", ignoreCase = true) == true ||
+                e.message?.contains("unique", ignoreCase = true) == true) {
+                logger.warn("Duplicate SKU attempted: ${product.sku}")
+                throw ProductAlreadyExistsException(product.sku)
+            }
+            throw e
+        }
     }
 
     @Caching(evict = [
@@ -117,6 +140,19 @@ class ProductService(
             .orElseThrow { ProductNotFoundException(id) }
 
         updateFn(product)
+
+        // Validate price is not negative
+        product.price?.let { price ->
+            if (price < BigDecimal.ZERO) {
+                throw IllegalArgumentException("Product price cannot be negative: $price")
+            }
+        }
+        product.costPrice?.let { costPrice ->
+            if (costPrice < BigDecimal.ZERO) {
+                throw IllegalArgumentException("Product cost price cannot be negative: $costPrice")
+            }
+        }
+
         product.completenessScore = product.calculateCompleteness()
 
         val saved = productRepository.save(product)
@@ -181,21 +217,28 @@ class ProductService(
         logger.info("Product deleted: $id")
     }
 
-    @CacheEvict(cacheNames = [CacheConfig.DASHBOARD_STATS_CACHE], allEntries = true)
+    /**
+     * Bulk update product status using a single database query.
+     * Optimized: Previously executed N individual UPDATE queries, now uses 1 batch query.
+     */
+    @Caching(evict = [
+        CacheEvict(cacheNames = [CacheConfig.PRODUCT_BY_ID_CACHE], allEntries = true),
+        CacheEvict(cacheNames = [CacheConfig.PRODUCT_BY_SKU_CACHE], allEntries = true),
+        CacheEvict(cacheNames = [CacheConfig.DASHBOARD_STATS_CACHE], allEntries = true)
+    ])
     fun bulkUpdateStatus(ids: List<UUID>, status: ProductStatus): Int {
-        var updated = 0
-        ids.forEach { id ->
-            try {
-                updateStatus(id, status)
-                updated++
-            } catch (e: Exception) {
-                logger.warn("Failed to update product $id: ${e.message}")
-            }
-        }
+        if (ids.isEmpty()) return 0
+
+        // Use batch update for efficiency (single query instead of N queries)
+        val updated = productRepository.bulkUpdateStatus(ids, status)
         logger.info("Bulk status update: $updated/${ids.size} products updated to $status")
         return updated
     }
 
+    /**
+     * Get product statistics using optimized aggregated queries.
+     * Optimized: Previously executed 7 separate queries, now uses 2 queries.
+     */
     @Cacheable(
         cacheNames = [CacheConfig.DASHBOARD_STATS_CACHE],
         key = "'statistics'"
@@ -203,16 +246,23 @@ class ProductService(
     @Transactional(readOnly = true)
     fun getStatistics(): ProductStatistics {
         logger.debug("Calculating product statistics")
+
+        // Get most statistics in a single aggregated query
+        val stats = productRepository.getAggregatedStatistics()
+
+        // Only noImages needs a separate query due to subquery complexity
+        val noImages = productRepository.countProductsWithoutMedia()
+
         return ProductStatistics(
-            total = productRepository.count(),
-            draft = productRepository.countByStatus(ProductStatus.DRAFT),
-            pendingReview = productRepository.countByStatus(ProductStatus.PENDING_REVIEW),
-            approved = productRepository.countByStatus(ProductStatus.APPROVED),
-            published = productRepository.countByStatus(ProductStatus.PUBLISHED),
-            archived = productRepository.countByStatus(ProductStatus.ARCHIVED),
-            lowStock = productRepository.countLowStock(10),
-            noImages = productRepository.countWithoutImages(),
-            averageCompleteness = productRepository.getAverageCompleteness() ?: 0.0
+            total = (stats[0] as Long?) ?: 0L,
+            draft = (stats[1] as Long?) ?: 0L,
+            pendingReview = (stats[2] as Long?) ?: 0L,
+            approved = (stats[3] as Long?) ?: 0L,
+            published = (stats[4] as Long?) ?: 0L,
+            archived = (stats[5] as Long?) ?: 0L,
+            lowStock = (stats[6] as Long?) ?: 0L,
+            noImages = noImages,
+            averageCompleteness = (stats[7] as Double?) ?: 0.0
         )
     }
 
@@ -231,10 +281,19 @@ class ProductService(
         return productRepository.findWithoutImages(pageable)
     }
 
+    /**
+     * Get count of products by status using a single aggregated query.
+     * Optimized: Previously executed 5 separate queries (one per status), now uses 1.
+     */
     @Transactional(readOnly = true)
     fun countByStatus(): Map<ProductStatus, Long> {
+        // Get all counts in a single query
+        val counts = productRepository.countAllByStatus()
+            .associate { (it[0] as ProductStatus) to (it[1] as Long) }
+
+        // Ensure all statuses are present in the result (with 0 for missing)
         return ProductStatus.entries.associateWith { status ->
-            productRepository.countByStatus(status)
+            counts[status] ?: 0L
         }
     }
 

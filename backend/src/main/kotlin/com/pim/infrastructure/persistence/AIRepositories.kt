@@ -54,6 +54,19 @@ interface AIUsageLogRepository : JpaRepository<AIUsageLog, UUID> {
         WHERE u.createdAt >= :startDate
     """)
     fun countRequestsSince(startDate: Instant): Long
+
+    @Query("""
+        SELECT
+            FUNCTION('DATE', u.createdAt),
+            COUNT(u),
+            COALESCE(SUM(u.totalTokens), 0),
+            COALESCE(SUM(u.estimatedCost), 0.0)
+        FROM AIUsageLog u
+        WHERE u.createdAt >= :startDate
+        GROUP BY FUNCTION('DATE', u.createdAt)
+        ORDER BY FUNCTION('DATE', u.createdAt) DESC
+    """)
+    fun getDailyUsageStats(startDate: Instant): List<Array<Any>>
 }
 
 @Repository

@@ -268,8 +268,13 @@ class ChannelValidationService {
             errors.add(ValidationIssue("price", "Preço é obrigatório", "REQUIRED"))
         }
 
-        if (product.isInStock == null) {
-            errors.add(ValidationIssue("availability", "Disponibilidade é obrigatória", "REQUIRED"))
+        // BUG FIX: isInStock is non-nullable Boolean, check for stock consistency instead
+        // For Google Shopping, availability must match actual stock levels
+        if (product.stockQuantity <= 0 && product.isInStock) {
+            warnings.add(ValidationIssue("availability", "Produto marcado como disponível mas sem estoque", "CONSISTENCY"))
+        }
+        if (product.stockQuantity > 0 && !product.isInStock) {
+            warnings.add(ValidationIssue("availability", "Produto marcado como indisponível mas tem estoque", "CONSISTENCY"))
         }
 
         if (product.brand.isNullOrBlank()) {

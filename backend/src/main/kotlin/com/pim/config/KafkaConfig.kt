@@ -28,6 +28,9 @@ class KafkaConfig {
     @Value("\${spring.kafka.consumer.group-id:pim-group}")
     private lateinit var groupId: String
 
+    @Value("\${kafka.listener-concurrency:3}")
+    private var listenerConcurrency: Int = 3
+
     companion object {
         const val PRODUCT_EVENTS_TOPIC = "pim.product.events"
         const val CATEGORY_EVENTS_TOPIC = "pim.category.events"
@@ -132,7 +135,7 @@ class KafkaConfig {
         val factory = ConcurrentKafkaListenerContainerFactory<String, Any>()
         factory.consumerFactory = consumerFactory
         factory.containerProperties.ackMode = ContainerProperties.AckMode.MANUAL_IMMEDIATE
-        factory.setConcurrency(3)
+        factory.setConcurrency(listenerConcurrency)
         factory.setCommonErrorHandler(KafkaErrorHandler())
         return factory
     }

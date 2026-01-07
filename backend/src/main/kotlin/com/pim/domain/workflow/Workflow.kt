@@ -63,7 +63,11 @@ data class WorkflowRequest(
     val createdAt: Instant = Instant.now(),
 
     @Column(nullable = false)
-    var updatedAt: Instant = Instant.now()
+    var updatedAt: Instant = Instant.now(),
+
+    // Optimistic locking to prevent concurrent review race condition
+    @Version
+    val version: Long = 0
 )
 
 @Entity

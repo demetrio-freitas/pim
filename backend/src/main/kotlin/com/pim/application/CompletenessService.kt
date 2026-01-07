@@ -33,11 +33,11 @@ data class CompletenessRuleDTO(
 )
 
 @Service
-@Transactional
 class CompletenessService(
     private val completenessRuleRepository: CompletenessRuleRepository
 ) {
 
+    @Transactional
     fun initializeDefaultRules() {
         val existingRules = completenessRuleRepository.findByCategoryIdIsNullAndIsActiveTrue()
         if (existingRules.isEmpty()) {
@@ -46,6 +46,7 @@ class CompletenessService(
         }
     }
 
+    @Transactional(readOnly = true)
     fun getRules(categoryId: UUID? = null): List<CompletenessRule> {
         return if (categoryId != null) {
             completenessRuleRepository.findRulesForCategory(categoryId)
@@ -54,10 +55,12 @@ class CompletenessService(
         }
     }
 
+    @Transactional(readOnly = true)
     fun getAllRules(): List<CompletenessRule> {
         return completenessRuleRepository.findAll()
     }
 
+    @Transactional
     fun createRule(dto: CompletenessRuleDTO): CompletenessRule {
         val rule = CompletenessRule(
             field = dto.field,
@@ -70,6 +73,7 @@ class CompletenessService(
         return completenessRuleRepository.save(rule)
     }
 
+    @Transactional
     fun updateRule(id: UUID, dto: CompletenessRuleDTO): CompletenessRule {
         val rule = completenessRuleRepository.findById(id)
             .orElseThrow { IllegalArgumentException("Rule not found") }
@@ -85,16 +89,20 @@ class CompletenessService(
         return completenessRuleRepository.save(updatedRule)
     }
 
+    @Transactional
     fun deleteRule(id: UUID) {
         completenessRuleRepository.deleteById(id)
     }
 
+    @Transactional(readOnly = true)
     fun evaluateProduct(product: Product): CompletenessEvaluation {
         val categoryId = product.categories.firstOrNull()?.id
         val rules = getRules(categoryId)
 
         if (rules.isEmpty()) {
-            return CompletenessEvaluation(score = 100, rules = emptyList())
+            // Return 0% when no rules are defined - indicating completeness cannot be evaluated
+            // This is more accurate than returning 100% which would be misleading
+            return CompletenessEvaluation(score = 0, rules = emptyList())
         }
 
         val evaluations = rules.map { rule ->
@@ -122,15 +130,17 @@ class CompletenessService(
 
     private fun isFieldFilled(product: Product, field: String): Boolean {
         return when (field) {
-            "name" -> !product.name.isNullOrBlank()
+            "name" -> product.name.isNotBlank()
             "description" -> !product.description.isNullOrBlank()
             "shortDescription" -> !product.shortDescription.isNullOrBlank()
-            "price" -> product.price != null && product.price!! > java.math.BigDecimal.ZERO
+            // Fixed: Use safe null check instead of !! operator to prevent NPE
+            "price" -> product.price?.let { it > java.math.BigDecimal.ZERO } ?: false
             "images" -> product.media.isNotEmpty()
             "category" -> product.categories.isNotEmpty()
             "brand" -> !product.brand.isNullOrBlank()
             "manufacturer" -> !product.manufacturer.isNullOrBlank()
-            "weight" -> product.weight != null && product.weight!! > java.math.BigDecimal.ZERO
+            // Fixed: weight is non-nullable (has default), check if greater than zero
+            "weight" -> product.weight > java.math.BigDecimal.ZERO
             "metaTitle" -> !product.metaTitle.isNullOrBlank()
             "metaDescription" -> !product.metaDescription.isNullOrBlank()
             "metaKeywords" -> !product.metaKeywords.isNullOrBlank()
@@ -148,6 +158,7 @@ class CompletenessService(
         }
     }
 
+    @Transactional(readOnly = true)
     fun calculateScore(product: Product): Int {
         return evaluateProduct(product).score
     }

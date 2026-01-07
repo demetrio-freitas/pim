@@ -5,6 +5,8 @@ import com.pim.domain.workflow.*
 import com.pim.infrastructure.persistence.NotificationRepository
 import com.pim.infrastructure.persistence.UserRepository
 import com.pim.infrastructure.persistence.WorkflowRequestRepository
+import org.slf4j.LoggerFactory
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
@@ -31,6 +33,7 @@ class WorkflowService(
     private val notificationRepository: NotificationRepository,
     private val userRepository: UserRepository
 ) {
+    private val logger = LoggerFactory.getLogger(WorkflowService::class.java)
 
     fun createRequest(dto: CreateWorkflowRequest, requester: User): WorkflowRequest {
         val request = WorkflowRequest(
@@ -67,7 +70,14 @@ class WorkflowService(
         request.reviewedAt = Instant.now()
         request.updatedAt = Instant.now()
 
-        val saved = workflowRequestRepository.save(request)
+        // Use optimistic locking to prevent race condition where two reviewers
+        // approve/reject the same request simultaneously
+        val saved = try {
+            workflowRequestRepository.save(request)
+        } catch (e: OptimisticLockingFailureException) {
+            logger.warn("Concurrent review detected for workflow request: $id")
+            throw IllegalStateException("Request was already reviewed by another user. Please refresh and try again.")
+        }
 
         // Notify requester about decision
         val statusText = if (dto.approved) "aprovada" else "rejeitada"
@@ -78,6 +88,7 @@ class WorkflowService(
             request = saved
         )
 
+        logger.info("Workflow request $id ${if (dto.approved) "approved" else "rejected"} by ${reviewer.id}")
         return saved
     }
 

@@ -1,10 +1,12 @@
 package com.pim.config
 
 import com.pim.application.ApiKeyService
+import com.pim.config.security.RateLimitingService
 import com.pim.domain.integration.ApiKey
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.slf4j.LoggerFactory
 import org.springframework.security.authentication.AbstractAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -26,8 +28,10 @@ class ApiKeyAuthentication(
 
 @Component
 class ApiKeyAuthenticationFilter(
-    private val apiKeyService: ApiKeyService
+    private val apiKeyService: ApiKeyService,
+    private val rateLimitingService: RateLimitingService
 ) : OncePerRequestFilter() {
+    private val logger = LoggerFactory.getLogger(ApiKeyAuthenticationFilter::class.java)
 
     companion object {
         const val API_KEY_HEADER = "X-API-Key"
@@ -51,10 +55,27 @@ class ApiKeyAuthenticationFilter(
             return
         }
 
+        val clientIp = getClientIp(request)
+
+        // SECURITY: Apply rate limiting to API key endpoints
+        if (!rateLimitingService.isAllowed("apikey:$clientIp")) {
+            logger.warn("API key endpoint rate limited for IP: $clientIp")
+            response.status = 429 // Too Many Requests
+            response.contentType = "application/json"
+            response.setHeader("Retry-After", "60")
+            response.writer.write("""
+                {
+                    "error": "Too Many Requests",
+                    "message": "Rate limit exceeded. Please slow down.",
+                    "retryAfter": 60
+                }
+            """.trimIndent())
+            return
+        }
+
         val apiKey = extractApiKey(request)
 
         if (apiKey != null) {
-            val clientIp = getClientIp(request)
             val requiredPermission = getRequiredPermission(request)
 
             val validatedKey = apiKeyService.validateKey(apiKey, requiredPermission, clientIp)

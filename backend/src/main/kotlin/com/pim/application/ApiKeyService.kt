@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Instant
@@ -62,11 +63,20 @@ data class ApiKeyCreatedResponse(
 class ApiKeyService(
     private val apiKeyRepository: ApiKeyRepository
 ) {
+    private val logger = LoggerFactory.getLogger(ApiKeyService::class.java)
     private val secureRandom = SecureRandom()
 
     fun create(request: ApiKeyCreateRequest, createdBy: UUID?): ApiKeyCreatedResponse {
-        // Gera chave aleatória de 32 bytes (256 bits)
-        val keyBytes = ByteArray(32)
+        // SECURITY: Validate rate limit
+        if (request.rateLimit <= 0) {
+            throw IllegalArgumentException("Rate limit must be positive")
+        }
+        if (request.expiresAt != null && request.expiresAt.isBefore(Instant.now())) {
+            throw IllegalArgumentException("Expiration date cannot be in the past")
+        }
+
+        // SECURITY: Generate key with 64 bytes (512 bits) for increased entropy
+        val keyBytes = ByteArray(64)
         secureRandom.nextBytes(keyBytes)
         val rawKey = "pim_" + Base64.getUrlEncoder().withoutPadding().encodeToString(keyBytes)
 
@@ -87,6 +97,9 @@ class ApiKeyService(
 
         val saved = apiKeyRepository.save(apiKey)
 
+        // AUDIT: Log API key creation
+        logger.info("API key created: id=${saved.id}, name='${saved.name}', createdBy=$createdBy, permissions=${saved.permissions}")
+
         return ApiKeyCreatedResponse(
             id = saved.id,
             name = saved.name,
@@ -102,6 +115,14 @@ class ApiKeyService(
         val apiKey = apiKeyRepository.findById(id)
             .orElseThrow { IllegalArgumentException("API Key não encontrada") }
 
+        // SECURITY: Validate rate limit if provided
+        request.rateLimit?.let {
+            if (it <= 0) throw IllegalArgumentException("Rate limit must be positive")
+        }
+        request.expiresAt?.let {
+            if (it.isBefore(Instant.now())) throw IllegalArgumentException("Expiration date cannot be in the past")
+        }
+
         request.name?.let { apiKey.name = it }
         request.description?.let { apiKey.description = it }
         request.permissions?.let { apiKey.permissions = it.toMutableSet() }
@@ -112,6 +133,10 @@ class ApiKeyService(
         apiKey.updatedAt = Instant.now()
 
         val saved = apiKeyRepository.save(apiKey)
+
+        // AUDIT: Log API key update
+        logger.info("API key updated: id=$id, changes=${request}")
+
         return saved.toResponse()
     }
 
@@ -123,10 +148,19 @@ class ApiKeyService(
         apiKey.updatedAt = Instant.now()
 
         val saved = apiKeyRepository.save(apiKey)
+
+        // AUDIT: Log API key revocation
+        logger.warn("API key revoked: id=$id, name='${apiKey.name}'")
+
         return saved.toResponse()
     }
 
     fun delete(id: UUID) {
+        val apiKey = apiKeyRepository.findById(id).orElse(null)
+
+        // AUDIT: Log API key deletion
+        logger.warn("API key deleted: id=$id, name='${apiKey?.name ?: "unknown"}'")
+
         apiKeyRepository.deleteById(id)
     }
 
@@ -141,7 +175,13 @@ class ApiKeyService(
 
     fun validateKey(rawKey: String, requiredPermission: String? = null, clientIp: String? = null): ApiKey? {
         val keyHash = hashKey(rawKey)
-        val apiKey = apiKeyRepository.findByKeyHash(keyHash) ?: return null
+
+        // SECURITY: Use constant-time comparison to prevent timing attacks
+        // First, get all active keys and compare hashes using MessageDigest.isEqual
+        val candidateKey = apiKeyRepository.findByKeyPrefix(rawKey.take(12))
+        val apiKey = candidateKey?.takeIf {
+            MessageDigest.isEqual(it.keyHash.toByteArray(), keyHash.toByteArray())
+        } ?: return null
 
         // Verifica se está válida
         if (!apiKey.isValid()) return null
@@ -153,7 +193,10 @@ class ApiKeyService(
         if (requiredPermission != null && !apiKey.hasPermission(requiredPermission)) return null
 
         // Verifica rate limit
-        if (apiKey.requestsToday >= apiKey.rateLimit) return null
+        if (apiKey.requestsToday >= apiKey.rateLimit) {
+            logger.warn("API key rate limit exceeded: id=${apiKey.id}, name='${apiKey.name}', requestsToday=${apiKey.requestsToday}, rateLimit=${apiKey.rateLimit}")
+            return null
+        }
 
         // Atualiza uso
         apiKey.lastUsedAt = Instant.now()

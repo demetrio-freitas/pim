@@ -30,6 +30,17 @@ export function getLocalizedErrorMessage(errorCode: ErrorCode): string {
   return errorMessages[errorCode] || 'Ocorreu um erro inesperado';
 }
 
+/**
+ * API Client for PIM backend communication.
+ *
+ * SECURITY NOTE: Currently tokens are stored in localStorage for simplicity.
+ * This is vulnerable to XSS attacks. For production environments, consider:
+ * 1. Using httpOnly cookies for token storage (requires backend changes)
+ * 2. Implementing token rotation on each request
+ * 3. Using short-lived access tokens with refresh tokens
+ *
+ * The backend already supports token blacklisting which mitigates some risks.
+ */
 class ApiClient {
   private client: AxiosInstance;
   private accessToken: string | null = null;
@@ -87,10 +98,18 @@ class ApiClient {
     );
   }
 
+  /**
+   * Store authentication tokens.
+   *
+   * WARNING: localStorage is accessible to JavaScript, making it vulnerable to XSS.
+   * For production, implement httpOnly cookie-based token storage.
+   * The backend /api/auth/login endpoint can be extended to set secure cookies.
+   */
   setTokens(access: string, refresh: string) {
     this.accessToken = access;
     this.refreshToken = refresh;
     if (typeof window !== 'undefined') {
+      // TODO: Migrate to httpOnly cookies for production security
       localStorage.setItem('accessToken', access);
       localStorage.setItem('refreshToken', refresh);
     }
@@ -146,8 +165,33 @@ class ApiClient {
     return response.data;
   }
 
-  logout() {
-    this.clearTokens();
+  /**
+   * Logout and invalidate the current token on the server.
+   * SECURITY: Also clears local tokens to prevent reuse.
+   */
+  async logout(): Promise<void> {
+    try {
+      // Call backend to invalidate the token
+      await this.client.post('/auth/logout');
+    } catch (error) {
+      // Continue with local logout even if server call fails
+      console.warn('Server logout failed, proceeding with local logout');
+    } finally {
+      this.clearTokens();
+    }
+  }
+
+  /**
+   * Logout from all devices (invalidate all tokens for this user).
+   */
+  async logoutAll(): Promise<void> {
+    try {
+      await this.client.post('/auth/logout-all');
+    } catch (error) {
+      console.warn('Server logout-all failed, proceeding with local logout');
+    } finally {
+      this.clearTokens();
+    }
   }
 
   // Products

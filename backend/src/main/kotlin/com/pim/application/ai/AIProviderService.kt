@@ -242,12 +242,22 @@ class AIProviderService(
         val totalTokens = operationStats.sumOf { it.tokens }
         val totalCost = operationStats.sumOf { it.cost }
 
+        // Fetch daily usage statistics
+        val dailyStats = usageLogRepository.getDailyUsageStats(startDate).map { row ->
+            DailyStat(
+                date = row[0].toString(), // Date formatted as string
+                requests = row[1] as Long,
+                tokens = (row[2] as? Long) ?: 0L,
+                cost = (row[3] as? Double) ?: 0.0
+            )
+        }
+
         return AIUsageStatsResponse(
             totalRequests = totalRequests,
             totalTokens = totalTokens,
             totalCost = totalCost,
             operationStats = operationStats,
-            dailyStats = emptyList() // TODO: Implement daily stats
+            dailyStats = dailyStats
         )
     }
 
@@ -366,7 +376,7 @@ class AIProviderService(
             AIProviderType.OPENAI -> "gpt-4o-mini"
             AIProviderType.AZURE_OPENAI -> "gpt-4o-mini"
             AIProviderType.ANTHROPIC -> "claude-3-5-sonnet-20241022"
-            AIProviderType.GOOGLE -> "gemini-pro"
+            AIProviderType.GOOGLE -> "gemini-1.5-flash" // Fixed: gemini-pro is deprecated
         }
     }
 
